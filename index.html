@@ -410,6 +410,11 @@
         }
         .logo:hover { transform: scale(1.04); }
         .logo:active { transform: scale(0.96); }
+        .logo.logo-holding {
+            color: var(--danger);
+            text-shadow: 0 0 12px rgba(255,79,79,0.8), 0 0 28px rgba(255,79,79,0.3);
+            animation: none;
+        }
 
         /* ── RANDOM GIF OVERLAY ── */
         .logo-gif {
@@ -794,7 +799,7 @@
 </audio>
 <div class="app">
     <header>
-        <div class="logo" id="logo" onclick="showRandomLogoGif()" title="Click for a surprise">▶ SHUFFLE</div>
+        <div class="logo" id="logo" title="Click — случайная гифка • Удержать — очистить все">▶ SHUFFLE</div>
         <div class="url-bar">
             <input type="text" id="playlist-url" class="url-input" placeholder="Paste YouTube playlist link...">
             <div class="spinner" id="spinner"></div>
@@ -897,34 +902,155 @@
         'gif2.gif',
         'gif3.gif',
         'gif4.gif',
-        'gif5.gif',
-        'gif6.gif',
-        'gif7.gif',
-        'gif8.gif',
-        'gif9.gif',
-        'gif10.gif',
-        'gif11.gif',
-        'gif12.gif',
-        'gif13.gif',
-        'gif14.gif',
-        'gif15.gif',
-        'gif16.gif',
-        'gif17.gif',
-        'gif18.gif',
-        'gif19.gif',
-        'gif20.gif',
-        'gif21.gif',
-        'gif22.gif',
-        'gif23.gif',
-        'gif24.gif',
-        'gif25.gif',
-        'gif26.gif',
-        'gif27.gif',
-        'gif28.gif',
-        'gif29.gif',
-        'gif30.gif'
+        'gif5.gif'
     ];
     let _logoGifLastIndex = -1;
+
+    // Удерживать логотип столько мс — чтобы сработало "очистить все гифки"
+    const LOGO_LONG_PRESS_MS = 550;
+
+    function clearAllLogoGifs() {
+        const gifs = document.querySelectorAll('.logo-gif');
+        gifs.forEach(g => {
+            g.classList.remove('visible');
+            setTimeout(() => g.remove(), 260);
+        });
+    }
+
+    function wireLogoInteractions() {
+        const logo = document.getElementById('logo');
+        if (!logo) return;
+
+        let pressTimer = null;
+        let longPressed = false;
+        let pressX = 0, pressY = 0;
+
+        const cancelTimer = () => {
+            if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+            logo.classList.remove('logo-holding');
+        };
+
+        const onDown = (e) => {
+            longPressed = false;
+            const pt = (e.touches && e.touches[0]) || e;
+            pressX = pt.clientX; pressY = pt.clientY;
+            cancelTimer();
+            logo.classList.add('logo-holding');
+            pressTimer = setTimeout(() => {
+                longPressed = true;
+                pressTimer = null;
+                logo.classList.remove('logo-holding');
+                clearAllLogoGifs();
+            }, LOGO_LONG_PRESS_MS);
+        };
+        const onMove = (e) => {
+            if (!pressTimer) return;
+            const pt = (e.touches && e.touches[0]) || e;
+            if (Math.hypot(pt.clientX - pressX, pt.clientY - pressY) > 6) {
+                cancelTimer();
+            }
+        };
+        const onUp = () => {
+            cancelTimer();
+        };
+        const onClick = (e) => {
+            // Если было длинное нажатие — подавляем клик
+            if (longPressed) { longPressed = false; e.preventDefault(); e.stopPropagation(); return; }
+            showRandomLogoGif();
+        };
+
+        logo.addEventListener('mousedown', onDown);
+        logo.addEventListener('mousemove', onMove);
+        logo.addEventListener('mouseup', onUp);
+        logo.addEventListener('mouseleave', onUp);
+        logo.addEventListener('click', onClick);
+        logo.addEventListener('touchstart', onDown, { passive: true });
+        logo.addEventListener('touchmove', onMove, { passive: true });
+        logo.addEventListener('touchend', onUp);
+        logo.addEventListener('touchcancel', onUp);
+    }
+
+    // ── DURATION CACHE & FETCH ──
+    const DURATION_CACHE_KEY = 'shuffleDurationCache';
+    let _durationCache = null;
+
+    function getDurationCache() {
+        if (_durationCache) return _durationCache;
+        try {
+            _durationCache = JSON.parse(localStorage.getItem(DURATION_CACHE_KEY) || '{}') || {};
+        } catch (_) { _durationCache = {}; }
+        return _durationCache;
+    }
+    function saveDurationCache() {
+        try { localStorage.setItem(DURATION_CACHE_KEY, JSON.stringify(_durationCache || {})); } catch (_) {}
+    }
+
+    // ISO 8601 duration -> "H:MM:SS" или "M:SS"
+    function formatISODuration(iso) {
+        if (!iso) return '';
+        const m = iso.match(/^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+        if (!m) return '';
+        const days = parseInt(m[1] || 0, 10);
+        let h = parseInt(m[2] || 0, 10);
+        const min = parseInt(m[3] || 0, 10);
+        const s = parseInt(m[4] || 0, 10);
+        h += days * 24;
+        const pad = n => String(n).padStart(2, '0');
+        if (h > 0) return `${h}:${pad(min)}:${pad(s)}`;
+        return `${min}:${pad(s)}`;
+    }
+
+    function applyCachedDurations(list) {
+        const cache = getDurationCache();
+        list.forEach(v => {
+            if (cache[v.id]) v.duration = cache[v.id];
+        });
+    }
+
+    function updateDurationDom(videoId, text) {
+        const nodes = document.querySelectorAll(`.video-duration[data-vid="${videoId}"]`);
+        nodes.forEach(n => { n.textContent = text; });
+    }
+
+    async function fetchMissingDurations(list) {
+        const cache = getDurationCache();
+        const missing = list.filter(v => !cache[v.id]).map(v => v.id);
+        if (!missing.length) return;
+
+        // Батчами по 50 id, параллельно, но с ограничением по количеству
+        const batches = [];
+        for (let i = 0; i < missing.length; i += 50) {
+            batches.push(missing.slice(i, i + 50));
+        }
+
+        const CONCURRENCY = 3;
+        let cursor = 0;
+        const worker = async () => {
+            while (cursor < batches.length) {
+                const my = batches[cursor++];
+                try {
+                    const url = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${my.join(',')}&key=${API_KEY}`;
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    if (data.error) { console.warn('[duration] api error', data.error.message); continue; }
+                    (data.items || []).forEach(it => {
+                        const dur = formatISODuration(it.contentDetails && it.contentDetails.duration);
+                        if (!dur) return;
+                        cache[it.id] = dur;
+                        // Обновляем модель
+                        const v = list.find(x => x.id === it.id);
+                        if (v) v.duration = dur;
+                        updateDurationDom(it.id, dur);
+                    });
+                } catch (err) {
+                    console.warn('[duration] fetch failed', err);
+                }
+            }
+        };
+        const workers = Array.from({ length: Math.min(CONCURRENCY, batches.length) }, worker);
+        await Promise.all(workers);
+        saveDurationCache();
+    }
 
     function showRandomLogoGif() {
         const container = document.getElementById('video-container');
@@ -1260,6 +1386,7 @@
             }
         });
         loadFavorites();
+        wireLogoInteractions();
         const songElement = document.getElementById('current-song');
         songElement.addEventListener('mouseenter', handleSongMouseEnter);
     }
@@ -1304,9 +1431,13 @@
             currentIndex = 0;
             repeatMode = 0;
             updateRepeatButton();
+            // Подставляем длительности из кеша мгновенно, остальные подтянем фоном
+            applyCachedDurations(originalList);
             renderList();
             playVideo(0);
             updateStarButton();
+            // Фоново догружаем недостающие длительности, не блокируя UI
+            fetchMissingDurations(originalList);
         } catch (error) {
             console.error("API Error:", error);
             alert("Error loading playlist: " + error.message);
@@ -1329,7 +1460,7 @@
                 <img src="${video.thumb}" loading="lazy">
                 <div class="video-item-info">
                     <div class="video-title">${video.title}</div>
-                    <div class="video-meta">#${index + 1} in queue</div>
+                    <div class="video-meta"><span class="video-duration" data-vid="${video.id}">${video.duration || '—:—'}</span></div>
                 </div>
             `;
             fragment.appendChild(div);
