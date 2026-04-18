@@ -404,6 +404,45 @@
         /* Logo pulse glow */
         .logo {
             animation: logoPulse 4s ease-in-out infinite;
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.12s ease;
+        }
+        .logo:hover { transform: scale(1.04); }
+        .logo:active { transform: scale(0.96); }
+
+        /* ── RANDOM GIF OVERLAY ── */
+        .logo-gif {
+            position: absolute;
+            left: 0;
+            top: 0;
+            max-width: 220px;
+            max-height: 220px;
+            width: auto;
+            height: auto;
+            opacity: 0;
+            transform: scale(0.92);
+            transition: opacity 0.25s ease, transform 0.25s ease;
+            pointer-events: none;
+            z-index: 20;
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
+            user-select: none;
+            -webkit-user-drag: none;
+            -webkit-user-select: none;
+            will-change: left, top;
+        }
+        .logo-gif.visible {
+            opacity: 1;
+            transform: scale(1);
+            pointer-events: auto;
+            cursor: grab;
+        }
+        .logo-gif.dragging {
+            cursor: grabbing;
+            transition: none;
         }
         @keyframes logoPulse {
             0%, 100% { text-shadow: 0 0 8px rgba(108,99,255,0.3); }
@@ -755,7 +794,7 @@
 </audio>
 <div class="app">
     <header>
-        <div class="logo">▶ SHUFFLE</div>
+        <div class="logo" id="logo" onclick="showRandomLogoGif()" title="Click for a surprise">▶ SHUFFLE</div>
         <div class="url-bar">
             <input type="text" id="playlist-url" class="url-input" placeholder="Paste YouTube playlist link...">
             <div class="spinner" id="spinner"></div>
@@ -768,6 +807,7 @@
         <div id="player-section" class="player-pane">
             <div id="video-container" class="video-wrap">
                 <div class="dimmer-overlay" id="dimmerOverlay"></div>
+
                 <div class="blackout-content" id="blackoutContent">
                     <div class="blackout-inner">
                         <div class="vinyl-wrap" onclick="toggleBlackoutPlay()" title="Play / Pause" style="cursor:pointer">
@@ -845,7 +885,131 @@
 
 <script>
     // --- CONFIG ---
-    const API_KEY = 'AIzaSyBaIt7mKZFhneA4vpnTGGrj091rPc0KvCE'; 
+    const API_KEY = 'AIzaSyBaIt7mKZFhneA4vpnTGGrj091rPc0KvCE';
+
+    // --- LOGO GIF CONFIG ---
+    // Место для гифок: папка `gifs/` рядом с этим index.html.
+    // Впиши сюда имена файлов, которые положил(а) в папку gifs/.
+    // Можно добавлять/удалять сколько угодно.
+    const LOGO_GIF_FOLDER = 'gifs/';
+    const LOGO_GIF_FILES = [
+        'gif1.gif',
+        'gif2.gif',
+        'gif3.gif',
+        'gif4.gif',
+        'gif5.gif'
+    ];
+    let _logoGifLastIndex = -1;
+
+    function showRandomLogoGif() {
+        const container = document.getElementById('video-container');
+        if (!container || !LOGO_GIF_FILES.length) return;
+
+        // Выбираем случайную гифку, стараясь не повторять предыдущую
+        let idx = Math.floor(Math.random() * LOGO_GIF_FILES.length);
+        if (LOGO_GIF_FILES.length > 1 && idx === _logoGifLastIndex) {
+            idx = (idx + 1) % LOGO_GIF_FILES.length;
+        }
+        _logoGifLastIndex = idx;
+
+        const src = LOGO_GIF_FOLDER + LOGO_GIF_FILES[idx];
+
+        const img = document.createElement('img');
+        img.className = 'logo-gif';
+        img.alt = '';
+        img.draggable = false;
+        // querystring, чтобы гифка проигрывалась заново при повторном клике
+        img.src = src + '?t=' + Date.now();
+
+        img.addEventListener('error', () => {
+            console.warn('[logo-gif] не удалось загрузить', src);
+            img.remove();
+        });
+
+        // Позиционируем в случайной точке внутри плеера после загрузки
+        const placeRandom = () => {
+            const rect = container.getBoundingClientRect();
+            const w = img.offsetWidth || 180;
+            const h = img.offsetHeight || 180;
+            const maxX = Math.max(0, rect.width - w);
+            const maxY = Math.max(0, rect.height - h);
+            img.style.left = Math.floor(Math.random() * maxX) + 'px';
+            img.style.top = Math.floor(Math.random() * maxY) + 'px';
+            requestAnimationFrame(() => img.classList.add('visible'));
+        };
+        img.addEventListener('load', placeRandom, { once: true });
+
+        // Закрытие по двойному клику на гифку
+        img.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            img.classList.remove('visible');
+            setTimeout(() => img.remove(), 260);
+        });
+
+        // Драг по плееру
+        attachLogoGifDrag(img, container);
+
+        container.appendChild(img);
+
+        // На всякий случай — если load уже выстрелил из кеша
+        if (img.complete && img.naturalWidth) placeRandom();
+    }
+
+    function attachLogoGifDrag(el, container) {
+        let dragging = false;
+        let startX = 0, startY = 0, origLeft = 0, origTop = 0;
+        let moved = false;
+
+        const onDown = (e) => {
+            if (e.button !== undefined && e.button !== 0) return;
+            dragging = true;
+            moved = false;
+            const pt = (e.touches && e.touches[0]) || e;
+            startX = pt.clientX;
+            startY = pt.clientY;
+            origLeft = el.offsetLeft;
+            origTop = el.offsetTop;
+            el.classList.add('dragging');
+            // поднять над другими гифками
+            el.style.zIndex = 21;
+            e.preventDefault();
+        };
+        const onMove = (e) => {
+            if (!dragging) return;
+            const pt = (e.touches && e.touches[0]) || e;
+            const dx = pt.clientX - startX;
+            const dy = pt.clientY - startY;
+            if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+            const cRect = container.getBoundingClientRect();
+            let nx = origLeft + dx;
+            let ny = origTop + dy;
+            nx = Math.max(0, Math.min(cRect.width - el.offsetWidth, nx));
+            ny = Math.max(0, Math.min(cRect.height - el.offsetHeight, ny));
+            el.style.left = nx + 'px';
+            el.style.top = ny + 'px';
+            e.preventDefault();
+        };
+        const onUp = () => {
+            if (!dragging) return;
+            dragging = false;
+            el.classList.remove('dragging');
+            el.style.zIndex = 20;
+        };
+
+        el.addEventListener('mousedown', onDown);
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+
+        // touch support
+        el.addEventListener('touchstart', onDown, { passive: false });
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('touchend', onUp);
+        document.addEventListener('touchcancel', onUp);
+
+        // чтобы перетаскивание не выделяло картинку
+        el.addEventListener('dragstart', (e) => e.preventDefault());
+    }
+
     
     let player;
     let originalList = [];
@@ -873,42 +1037,28 @@
         localStorage.setItem('shuffleFavorites', JSON.stringify(favorites));
     }
 
-    function calculateTolerance() {
-        const titleEl = document.getElementById('current-song-title');
-        const textLength = titleEl.textContent.length;
-        horizontalTolerance = Math.max(50, textLength * 6);
-    }
-
+    // Логика переключения (Toggle) при наведении
     function handleSongMouseEnter(e) {
-        clearTimeout(leaveTimeout);
-        hoverTimeout = setTimeout(() => { showPlaylistName(); }, 200);
-    }
-
-    function handleSongMouseLeave(e) {
         clearTimeout(hoverTimeout);
-        const songElement = document.getElementById('current-song');
-        const rect = songElement.getBoundingClientRect();
-        leaveTimeout = setTimeout(() => {
-            if (e.clientY < rect.top - 20 || e.clientY > rect.bottom + 20) showSongName();
-        }, 100);
+        
+        hoverTimeout = setTimeout(() => {
+            if (isShowingPlaylistName) {
+                showSongName();
+            } else {
+                showPlaylistName();
+            }
+        }, 150); // Небольшая задержка от случайных срабатываний
     }
 
-    document.addEventListener('mousemove', (e) => {
-        const songElement = document.getElementById('current-song');
-        if (!songElement) return;
-        const rect = songElement.getBoundingClientRect();
-        const verticalTolerance = 20;
-        const isInVerticalZone = e.clientY >= rect.top - verticalTolerance && e.clientY <= rect.bottom + verticalTolerance;
-        const isInHorizontalZone = e.clientX >= rect.left - horizontalTolerance && e.clientX <= rect.right + horizontalTolerance;
-        if (isShowingPlaylistName && (!isInVerticalZone || !isInHorizontalZone)) showSongName();
-    });
-
+    // Показать название плейлиста
     function showPlaylistName() {
-        if (isShowingPlaylistName || !currentPlaylistTitle) return;
+        if (!currentPlaylistTitle) return; // Если плейлиста нет, ничего не делаем
         isShowingPlaylistName = true;
+        
         const titleEl = document.getElementById('current-song-title');
         titleEl.classList.remove('fade-in');
         titleEl.classList.add('fade-out');
+        
         setTimeout(() => {
             titleEl.textContent = currentPlaylistTitle;
             titleEl.title = currentPlaylistTitle;
@@ -917,12 +1067,14 @@
         }, 150);
     }
 
+    // Показать название песни
     function showSongName() {
-        if (!isShowingPlaylistName) return;
         isShowingPlaylistName = false;
+        
         const titleEl = document.getElementById('current-song-title');
         titleEl.classList.remove('fade-in');
         titleEl.classList.add('fade-out');
+        
         setTimeout(() => {
             if (currentQueue.length === 0) {
                 titleEl.textContent = 'No songs';
@@ -934,13 +1086,15 @@
             }
             titleEl.classList.remove('fade-out');
             titleEl.classList.add('fade-in');
-            calculateTolerance();
         }, 150);
     }
 
+    // Обновление дисплея при переключении треков
     function updateCurrentSongDisplay() {
         if (isShowingPlaylistName) return;
+        
         const titleEl = document.getElementById('current-song-title');
+        
         if (currentQueue.length === 0) {
             titleEl.textContent = 'No songs';
             titleEl.title = '';
@@ -949,7 +1103,6 @@
             titleEl.textContent = currentSong.title;
             titleEl.title = currentSong.title;
         }
-        calculateTolerance();
     }
 
     function toggleRepeat() {
@@ -1084,7 +1237,6 @@
         loadFavorites();
         const songElement = document.getElementById('current-song');
         songElement.addEventListener('mouseenter', handleSongMouseEnter);
-        songElement.addEventListener('mouseleave', handleSongMouseLeave);
     }
 
     function handleVideoEnd() {
