@@ -158,6 +158,63 @@
             border: none;
         }
 
+        /* ── DIMMER OVERLAY ── */
+        .dimmer-overlay {
+            position: absolute;
+            inset: 0;
+            background: #0a0a0c;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s ease;
+            z-index: 10;
+        }
+
+        /* ── BRIGHTNESS SLIDER ── */
+        .brightness-wrap {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            flex-shrink: 0;
+        }
+        .brightness-icon {
+            font-size: 11px;
+            color: var(--muted);
+            flex-shrink: 0;
+            user-select: none;
+            font-family: 'DM Mono', monospace;
+        }
+        .brightness-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 68px;
+            height: 3px;
+            border-radius: 2px;
+            background: var(--border2);
+            outline: none;
+            cursor: pointer;
+        }
+        .brightness-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            background: var(--muted);
+            cursor: pointer;
+            transition: background 0.15s, transform 0.15s;
+        }
+        .brightness-slider:hover::-webkit-slider-thumb {
+            background: var(--text);
+            transform: scale(1.25);
+        }
+        .brightness-slider::-moz-range-thumb {
+            width: 11px;
+            height: 11px;
+            border: none;
+            border-radius: 50%;
+            background: var(--muted);
+            cursor: pointer;
+        }
+
         .placeholder {
             height: 100%;
             display: flex;
@@ -484,6 +541,7 @@
     <main>
         <div id="player-section" class="player-pane">
             <div id="video-container" class="video-wrap">
+                <div class="dimmer-overlay" id="dimmerOverlay"></div>
                 <div id="video-placeholder">
                     <div class="placeholder">
                         <div class="placeholder-icon">◈</div>
@@ -503,6 +561,10 @@
                 <button id="repeat-btn" class="btn btn-repeat" onclick="toggleRepeat()" title="Repeat">↻</button>
                 <button class="btn btn-ghost" onclick="shufflePlaylist()">⇄ Shuffle</button>
                 <button class="btn btn-danger" onclick="unshufflePlaylist()">↺ Unshuffle</button>
+                <div class="brightness-wrap">
+                    <span class="brightness-icon" id="brightnessIcon" onclick="toggleBlackout()" style="cursor:pointer;user-select:none" title="Toggle blackout">☀</span>
+                    <input type="range" class="brightness-slider" id="brightnessSlider" min="0" max="85" value="0" oninput="setDim(this.value)" title="Dim player">
+                </div>
             </div>
         </div>
 
@@ -1020,6 +1082,31 @@
         currentIndex = currentQueue.indexOf(currentVideo);
         playVideo(currentIndex);
         renderList();
+    }
+    let isBlackedOut = false;
+
+    function toggleBlackout() {
+        isBlackedOut = !isBlackedOut;
+        const icon = document.getElementById("brightnessIcon");
+        if (isBlackedOut) {
+            document.getElementById("dimmerOverlay").style.opacity = "1";
+            icon.style.color = "var(--accent)";
+            icon.title = "Restore video";
+        } else {
+            const slider = document.getElementById("brightnessSlider");
+            setDim(slider.value);
+            icon.style.color = "";
+            icon.title = "Toggle blackout";
+        }
+    }
+
+    function setDim(value) {
+        if (isBlackedOut) return;
+        const overlay = document.getElementById("dimmerOverlay");
+        overlay.style.opacity = (value / 100).toFixed(2);
+        const slider = document.getElementById("brightnessSlider");
+        const pct = (value / 85) * 100;
+        slider.style.background = `linear-gradient(to right, var(--border) ${pct}%, var(--border2) ${pct}%)`;
     }
 </script>
 </body>
