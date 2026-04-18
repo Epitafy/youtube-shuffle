@@ -1063,8 +1063,11 @@
         img.className = 'logo-gif';
         img.alt = '';
         img.draggable = false;
-        // querystring, чтобы гифка проигрывалась заново при повторном клике
-        img.src = src + '?t=' + Date.now();
+        // Не добавляем cache-buster: одинаковый URL → браузер переиспользует
+        // уже декодированные кадры из image cache, и каждый новый <img>
+        // сам по себе запускает анимацию с нуля. Это резко снижает расход памяти
+        // при многократных кликах по логотипу.
+        img.src = src;
 
         img.addEventListener('error', () => {
             console.warn('[logo-gif] не удалось загрузить', src);
@@ -1164,30 +1167,30 @@
     }
 
     function attachLogoGifDrag(el, container) {
+        // Используем Pointer Events + setPointerCapture: все слушатели живут
+        // на самом элементе, а не на document — поэтому при удалении гифки
+        // они корректно уходят на сборку мусора, без утечек.
         let dragging = false;
+        let activePointerId = null;
         let startX = 0, startY = 0, origLeft = 0, origTop = 0;
-        let moved = false;
 
         const onDown = (e) => {
             if (e.button !== undefined && e.button !== 0) return;
             dragging = true;
-            moved = false;
-            const pt = (e.touches && e.touches[0]) || e;
-            startX = pt.clientX;
-            startY = pt.clientY;
+            activePointerId = e.pointerId;
+            startX = e.clientX;
+            startY = e.clientY;
             origLeft = el.offsetLeft;
             origTop = el.offsetTop;
+            try { el.setPointerCapture(e.pointerId); } catch (_) {}
             el.classList.add('dragging');
-            // поднять над другими гифками
             el.style.zIndex = 21;
             e.preventDefault();
         };
         const onMove = (e) => {
-            if (!dragging) return;
-            const pt = (e.touches && e.touches[0]) || e;
-            const dx = pt.clientX - startX;
-            const dy = pt.clientY - startY;
-            if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+            if (!dragging || e.pointerId !== activePointerId) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
             const cRect = container.getBoundingClientRect();
             let nx = origLeft + dx;
             let ny = origTop + dy;
@@ -1200,24 +1203,21 @@
             ny = Math.max(minY, Math.min(maxY, ny));
             el.style.left = nx + 'px';
             el.style.top = ny + 'px';
-            e.preventDefault();
         };
-        const onUp = () => {
+        const onUp = (e) => {
             if (!dragging) return;
+            if (activePointerId !== null && e.pointerId !== activePointerId) return;
             dragging = false;
+            activePointerId = null;
             el.classList.remove('dragging');
             el.style.zIndex = 20;
+            try { el.releasePointerCapture(e.pointerId); } catch (_) {}
         };
 
-        el.addEventListener('mousedown', onDown);
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-
-        // touch support
-        el.addEventListener('touchstart', onDown, { passive: false });
-        document.addEventListener('touchmove', onMove, { passive: false });
-        document.addEventListener('touchend', onUp);
-        document.addEventListener('touchcancel', onUp);
+        el.addEventListener('pointerdown', onDown);
+        el.addEventListener('pointermove', onMove);
+        el.addEventListener('pointerup', onUp);
+        el.addEventListener('pointercancel', onUp);
 
         // чтобы перетаскивание не выделяло картинку
         el.addEventListener('dragstart', (e) => e.preventDefault());
