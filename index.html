@@ -897,39 +897,7 @@
     // Впиши сюда имена файлов, которые положил(а) в папку gifs/.
     // Можно добавлять/удалять сколько угодно.
     const LOGO_GIF_FOLDER = 'gifs/';
-    const LOGO_GIF_FILES = [
-        'gif1.gif',
-        'gif2.gif',
-        'gif3.gif',
-        'gif4.gif',
-        'gif5.gif',
-        'gif6.gif',
-        'gif7.gif',
-        'gif8.gif',
-        'gif9.gif',
-        'gif10.gif',
-        'gif11.gif',
-        'gif12.gif',
-        'gif13.gif',
-        'gif14.gif',
-        'gif15.gif',
-        'gif16.gif',
-        'gif17.gif',
-        'gif18.gif',
-        'gif19.gif',
-        'gif20.gif',
-        'gif21.gif',
-        'gif22.gif',
-        'gif23.gif',
-        'gif24.gif',
-        'gif25.gif',
-        'gif26.gif',
-        'gif27.gif',
-        'gif28.gif',
-        'gif29.gif',
-        'gif30.gif',
-        'gif31.gif'
-    ];
+    const LOGO_GIF_FILES = Array.from({ length: 31 }, (_, i) => `gif${i + 1}.gif`);
     let _logoGifLastIndex = -1;
 
     // Удерживать логотип столько мс — чтобы сработало "очистить все гифки"
@@ -1108,6 +1076,10 @@
             const rect = container.getBoundingClientRect();
             const w = img.offsetWidth || 180;
             const h = img.offsetHeight || 180;
+            // фиксируем базовые размеры для ресайза колесиком
+            img.dataset.baseW = w;
+            img.dataset.baseH = h;
+            img.dataset.scale = '1';
             const maxX = Math.max(0, rect.width - w);
             const maxY = Math.max(0, rect.height - h);
             img.style.left = Math.floor(Math.random() * maxX) + 'px';
@@ -1115,6 +1087,9 @@
             requestAnimationFrame(() => img.classList.add('visible'));
         };
         img.addEventListener('load', placeRandom, { once: true });
+
+        // Ресайз колесиком мыши
+        attachLogoGifWheelResize(img, container);
 
         // Закрытие по двойному клику на гифку
         img.addEventListener('dblclick', (e) => {
@@ -1130,6 +1105,62 @@
 
         // На всякий случай — если load уже выстрелил из кеша
         if (img.complete && img.naturalWidth) placeRandom();
+    }
+
+    // Ограничения масштаба при ресайзе колесиком
+    const LOGO_GIF_MIN_SCALE = 0.25;
+    const LOGO_GIF_MAX_SCALE = 4.0;
+    const LOGO_GIF_WHEEL_STEP = 1.12; // множитель за один тик колеса
+
+    function attachLogoGifWheelResize(el, container) {
+        el.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Если по какой-то причине базовые размеры ещё не зафиксированы — берём текущие
+            if (!el.dataset.baseW || !el.dataset.baseH) {
+                el.dataset.baseW = el.offsetWidth;
+                el.dataset.baseH = el.offsetHeight;
+                el.dataset.scale = '1';
+            }
+            const baseW = parseFloat(el.dataset.baseW) || el.offsetWidth;
+            const baseH = parseFloat(el.dataset.baseH) || el.offsetHeight;
+
+            let scale = parseFloat(el.dataset.scale || '1') || 1;
+            const factor = e.deltaY > 0 ? 1 / LOGO_GIF_WHEEL_STEP : LOGO_GIF_WHEEL_STEP;
+            const newScale = Math.max(LOGO_GIF_MIN_SCALE, Math.min(LOGO_GIF_MAX_SCALE, scale * factor));
+            if (newScale === scale) return;
+
+            const oldW = baseW * scale;
+            const oldH = baseH * scale;
+            const newW = baseW * newScale;
+            const newH = baseH * newScale;
+
+            // Точка под курсором на картинке (в процентах), чтобы зум "к курсору"
+            const rect = el.getBoundingClientRect();
+            const cx = (e.clientX - rect.left) / (oldW || rect.width);
+            const cy = (e.clientY - rect.top) / (oldH || rect.height);
+
+            let left = el.offsetLeft - (newW - oldW) * cx;
+            let top = el.offsetTop - (newH - oldH) * cy;
+
+            // Клампим позицию к границам плеера (с учётом оверсайза)
+            const cRect = container.getBoundingClientRect();
+            const minX = Math.min(0, cRect.width - newW);
+            const maxX = Math.max(0, cRect.width - newW);
+            const minY = Math.min(0, cRect.height - newH);
+            const maxY = Math.max(0, cRect.height - newH);
+            left = Math.max(minX, Math.min(maxX, left));
+            top = Math.max(minY, Math.min(maxY, top));
+
+            el.dataset.scale = String(newScale);
+            el.style.maxWidth = 'none';
+            el.style.maxHeight = 'none';
+            el.style.width = newW + 'px';
+            el.style.height = newH + 'px';
+            el.style.left = left + 'px';
+            el.style.top = top + 'px';
+        }, { passive: false });
     }
 
     function attachLogoGifDrag(el, container) {
@@ -1160,8 +1191,13 @@
             const cRect = container.getBoundingClientRect();
             let nx = origLeft + dx;
             let ny = origTop + dy;
-            nx = Math.max(0, Math.min(cRect.width - el.offsetWidth, nx));
-            ny = Math.max(0, Math.min(cRect.height - el.offsetHeight, ny));
+            // Если гифка больше плеера — разрешаем уводить её за край
+            const minX = Math.min(0, cRect.width - el.offsetWidth);
+            const maxX = Math.max(0, cRect.width - el.offsetWidth);
+            const minY = Math.min(0, cRect.height - el.offsetHeight);
+            const maxY = Math.max(0, cRect.height - el.offsetHeight);
+            nx = Math.max(minX, Math.min(maxX, nx));
+            ny = Math.max(minY, Math.min(maxY, ny));
             el.style.left = nx + 'px';
             el.style.top = ny + 'px';
             e.preventDefault();
