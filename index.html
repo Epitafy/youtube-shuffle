@@ -884,7 +884,7 @@
             margin: 4px 0;
         }
         .lobby-divider::after {
-            content: 'или';
+            content: 'or';
             position: absolute;
             left: 50%;
             top: -8px;
@@ -968,18 +968,18 @@
 </audio>
 <div class="app">
     <header>
-        <div class="logo" id="logo" title="Click — случайная гифка • Удержать — очистить все">▶ SHUFFLE</div>
+        <div class="logo" id="logo" title="Click — random GIF • Hold — clear all">▶ SHUFFLE</div>
         <div class="url-bar">
             <input type="text" id="playlist-url" class="url-input" placeholder="Paste YouTube playlist link...">
             <div class="spinner" id="spinner"></div>
             <button id="load-btn" class="btn btn-primary" onclick="loadPlaylist()">Load</button>
             <button id="star-btn" class="btn btn-star" onclick="toggleFavorite()" title="Add to favorites">★</button>
-            <button id="lobby-btn" class="lobby-btn" onclick="openLobbyModal()" title="Слушать с друзьями">◉ Лобби</button>
-            <div id="lobby-pill" class="lobby-pill" title="Лобби синхронизировано">
+            <button id="lobby-btn" class="lobby-btn" onclick="openLobbyModal()" title="Listen with friends">◉ Lobby</button>
+            <div id="lobby-pill" class="lobby-pill" title="Lobby synced">
                 <span class="lobby-dot"></span>
-                <span class="lobby-pill-code" id="lobby-pill-code" onclick="copyLobbyCode()" title="Кликни, чтобы скопировать">——————</span>
-                <span class="lobby-pill-members" id="lobby-pill-members" title="Участники">1</span>
-                <span class="lobby-pill-leave" onclick="leaveLobby()" title="Покинуть лобби">✕</span>
+                <span class="lobby-pill-code" id="lobby-pill-code" onclick="copyLobbyCode()" title="Click to copy">——————</span>
+                <span class="lobby-pill-members" id="lobby-pill-members" title="Members">1</span>
+                <span class="lobby-pill-leave" onclick="leaveLobby()" title="Leave lobby">✕</span>
             </div>
         </div>
     </header>
@@ -987,22 +987,21 @@
     <!-- Lobby modal -->
     <div id="lobby-modal" class="lobby-modal-backdrop" onclick="if(event.target===this)closeLobbyModal()">
         <div class="lobby-modal">
-            <h3>Слушать вместе</h3>
-            <div class="lobby-hint">Создай лобби и отправь другу код. Вы будете слушать одну очередь, синхронно: play/pause, перемотка, next/prev, shuffle.</div>
+            <h3>Listen together</h3>
             <div class="lobby-row">
-                <input type="text" id="lobby-name-input" class="lobby-input lobby-name" placeholder="Твоё имя" maxlength="20">
+                <input type="text" id="lobby-name-input" class="lobby-input lobby-name" placeholder="Your name" maxlength="20">
             </div>
             <div class="lobby-actions" style="justify-content:stretch">
-                <button class="btn btn-primary" style="flex:1" onclick="uiCreateLobby()">Создать лобби</button>
+                <button class="btn btn-primary" style="flex:1" onclick="uiCreateLobby()">Create lobby</button>
             </div>
             <div class="lobby-divider"></div>
             <div class="lobby-row">
-                <input type="text" id="lobby-code-input" class="lobby-input" placeholder="КОД" maxlength="6">
-                <button class="btn btn-ghost" onclick="uiJoinLobby()">Войти</button>
+                <input type="text" id="lobby-code-input" class="lobby-input" placeholder="CODE" maxlength="6">
+                <button class="btn btn-ghost" onclick="uiJoinLobby()">Join</button>
             </div>
             <div class="lobby-hint" id="lobby-error" style="color:var(--danger);display:none"></div>
             <div class="lobby-actions">
-                <button class="btn btn-ghost" onclick="closeLobbyModal()">Закрыть</button>
+                <button class="btn btn-ghost" onclick="closeLobbyModal()">Close</button>
             </div>
         </div>
     </div>
@@ -1195,7 +1194,7 @@
     }
 
     async function uiCreateLobby() {
-        if (!LOBBY.db) { lobbyError('Firebase не инициализирован'); return; }
+        if (!LOBBY.db) { lobbyError('Firebase not initialized'); return; }
         const name = getDisplayName();
         // Find a unique code (try up to 5 times)
         let code = null;
@@ -1204,7 +1203,7 @@
             const snap = await LOBBY.db.ref('/lobbies/' + c).once('value');
             if (!snap.exists()) { code = c; break; }
         }
-        if (!code) { lobbyError('Не удалось подобрать свободный код. Попробуй ещё раз.'); return; }
+        if (!code) { lobbyError("Couldn't find a free code. Try again."); return; }
 
         const initial = {
             host: LOBBY.clientId,
@@ -1226,27 +1225,27 @@
             await LOBBY.db.ref('/lobbies/' + code + '/state').set(initial);
             await _lobbyAttach(code, name);
             closeLobbyModal();
-            lobbyToast('Лобби создано: ' + code);
+            lobbyToast('Lobby created: ' + code);
         } catch (e) {
             console.warn(e);
-            lobbyError('Ошибка создания лобби: ' + (e && e.message || e));
+            lobbyError('Failed to create lobby: ' + (e && e.message || e));
         }
     }
 
     async function uiJoinLobby() {
-        if (!LOBBY.db) { lobbyError('Firebase не инициализирован'); return; }
+        if (!LOBBY.db) { lobbyError('Firebase not initialized'); return; }
         const raw = (document.getElementById('lobby-code-input').value || '').trim().toUpperCase();
-        if (!/^[A-Z0-9]{4,8}$/.test(raw)) { lobbyError('Код должен быть из 4–8 символов (буквы/цифры)'); return; }
+        if (!/^[A-Z0-9]{4,8}$/.test(raw)) { lobbyError('Code must be 4–8 characters (letters/digits)'); return; }
         const name = getDisplayName();
         try {
             const snap = await LOBBY.db.ref('/lobbies/' + raw).once('value');
-            if (!snap.exists()) { lobbyError('Лобби с таким кодом не найдено'); return; }
+            if (!snap.exists()) { lobbyError('No lobby found with this code'); return; }
             await _lobbyAttach(raw, name);
             closeLobbyModal();
-            lobbyToast('Вошёл в лобби ' + raw);
+            lobbyToast('Joined lobby ' + raw);
         } catch (e) {
             console.warn(e);
-            lobbyError('Ошибка входа: ' + (e && e.message || e));
+            lobbyError('Failed to join: ' + (e && e.message || e));
         }
     }
 
@@ -1304,13 +1303,13 @@
         LOBBY.lastState = null;
         document.getElementById('lobby-btn').style.display = '';
         document.getElementById('lobby-pill').classList.remove('visible');
-        if (!silent) lobbyToast('Вышел из лобби ' + leftCode);
+        if (!silent) lobbyToast('Left lobby ' + leftCode);
     }
 
     function copyLobbyCode() {
         if (!LOBBY.code) return;
         const text = LOBBY.code;
-        const done = () => lobbyToast('Код скопирован: ' + text);
+        const done = () => lobbyToast('Code copied: ' + text);
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(done).catch(() => {
                 // fallback
