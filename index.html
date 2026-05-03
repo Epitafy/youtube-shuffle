@@ -1022,6 +1022,180 @@
             opacity: 1;
             transform: translateX(-50%) translateY(0);
         }
+
+        /* ── MOBILE LAYOUT (≤768px) ──
+           Раскладка для телефонов: шапка с переносом, видео сверху,
+           контролы и регуляторы под видео, очередь снизу.
+           Страница скроллится целиком — пытаться запихать всё в 100vh
+           на мобиле бессмысленно (адресная строка + жесты сворачивают
+           реальную высоту). */
+        @media (max-width: 768px) {
+            html, body { overflow-y: auto; }
+            .app {
+                grid-template-rows: auto 1fr;
+                height: auto;
+                min-height: 100vh;
+            }
+
+            /* Шапка: лого + URL-input + Load + ★ + Lobby всё в одну строку.
+               Инпут сжимается, кнопки остаются рядом. */
+            header {
+                gap: 8px;
+                padding: 10px 10px;
+                flex-wrap: nowrap;
+            }
+            .logo { font-size: 12px; flex-shrink: 0; }
+            .url-bar {
+                flex: 1 1 0;
+                min-width: 0;
+                flex-wrap: nowrap;
+                gap: 6px;
+            }
+            .url-input {
+                flex: 1 1 0;
+                min-width: 0;
+                padding: 0 10px;
+            }
+            .url-bar .btn { padding: 0 10px; flex-shrink: 0; }
+            #spinner { display: none; }
+            .lobby-pill { gap: 6px; padding: 4px 8px; }
+
+            main {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto;
+                overflow: visible;
+            }
+
+            .player-pane {
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+                overflow: visible;
+            }
+            .video-wrap {
+                flex: 0 0 auto;
+                aspect-ratio: 16 / 9;
+                width: 100%;
+                height: auto;
+            }
+
+            /* Контролы: первая строка — ◀ ▶ название ↻ ⇄ ↺ (loop/shuffle/unshuffle справа),
+               вторая строка — яркость + громкость. */
+            .controls {
+                flex-wrap: wrap;
+                gap: 6px;
+                padding: 10px 12px;
+                row-gap: 8px;
+            }
+            .controls .btn { padding: 0 10px; }
+            .current-song {
+                flex: 1 1 0;
+                min-width: 0;
+                padding: 0 6px;
+                position: relative;
+            }
+            .current-song-title {
+                position: static;
+                text-align: center;
+                left: auto;
+                right: auto;
+                font-size: 11.5px;
+            }
+            .controls-stack {
+                flex: 1 1 100%;
+                flex-direction: row;
+                gap: 12px;
+                justify-content: space-between;
+            }
+            .controls-stack .brightness-wrap { flex: 1; }
+            .controls-stack .brightness-slider { flex: 1; width: auto; }
+
+            .queue-pane {
+                /* Сама колонка переезжает под плеер (через grid-template-rows: auto auto),
+                   очередь больше не должна быть внутренним скроллом — пусть страница
+                   скроллит её целиком, иначе на телефоне получаешь два вложенных скролла. */
+                overflow: visible;
+            }
+            #queue-section, #favorites-section {
+                overflow: visible !important;
+            }
+            .queue-list {
+                overflow-y: visible;
+                flex: none;
+                max-height: none;
+            }
+        }
+
+        /* ── ОЧЕНЬ УЗКИЕ ЭКРАНЫ: ещё компактнее ── */
+        @media (max-width: 480px) {
+            .logo { font-size: 11px; }
+            .lobby-pill { font-size: 11px; }
+            .lobby-pill-code { letter-spacing: 0.06em; }
+
+            /* Общая геометрия всех кнопок (без font-size, чтобы не перебивать «иконочные» правила ниже).
+               line-height: 1 и inline-flex центрируют содержимое по кресту. */
+            .url-bar .btn,
+            .url-bar .lobby-btn,
+            .controls .btn {
+                height: 32px;
+                min-width: 32px;
+                padding: 0 10px;
+                box-sizing: border-box;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                line-height: 1;
+            }
+            .url-bar .btn-primary,
+            .url-bar .btn-star { font-size: 12px; }
+            .url-input { height: 32px; font-size: 11px; padding: 0 10px; }
+
+            /* Spinner может распирать строку, скрываем */
+            .url-bar #spinner { display: none; }
+
+            /* Иконочный режим: только кнопки с data-mobile-icon (Shuffle / Unshuffle).
+               gap: 0 важен — базовый .btn проставляет gap: 6px между ::before и нулевым
+               текстовым узлом, из-за этого иконка была смещена влево от центра. */
+            .controls .btn[data-mobile-icon] {
+                font-size: 0;
+                padding: 0;
+                width: 32px;
+                gap: 0;
+            }
+            .controls .btn[data-mobile-icon]::before {
+                content: attr(data-mobile-icon);
+                font-size: 14px;
+                line-height: 1;
+            }
+
+            /* Lobby — только иконка ◉.
+               Повышенная специфичность через селектор .url-bar .lobby-btn — иначе ранее объявленный
+               .url-bar .lobby-btn перебивал font-size: 0 и исходный текст «◉ Lobby» печатался рядом с ::before. */
+            .url-bar .lobby-btn {
+                font-size: 0;
+                padding: 0;
+                width: 32px;
+                gap: 0;
+            }
+            .url-bar .lobby-btn::before {
+                content: '◉';
+                font-size: 13px;
+                line-height: 1;
+            }
+
+            /* prev/next — без data-mobile-icon, их собственные символы ◀ / ▶ остаются */
+            .controls .btn-ghost:not([data-mobile-icon]) {
+                width: 32px;
+                padding: 0;
+                font-size: 14px;
+            }
+            /* repeat — свой класс btn-repeat, также 32×32 для единообразия */
+            .controls .btn-repeat {
+                width: 32px;
+                min-width: 32px;
+                padding: 0;
+                font-size: 14px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1117,8 +1291,8 @@
                 </div>
                 
                 <button id="repeat-btn" class="btn btn-repeat" onclick="toggleRepeat()" title="Repeat">↻</button>
-                <button class="btn btn-ghost" onclick="shufflePlaylist()">⇄ Shuffle</button>
-                <button class="btn btn-danger" onclick="unshufflePlaylist()">↺ Unshuffle</button>
+                <button class="btn btn-ghost" data-mobile-icon="⇄" onclick="shufflePlaylist()">⇄ Shuffle</button>
+                <button class="btn btn-danger" data-mobile-icon="↺" onclick="unshufflePlaylist()">↺ Unshuffle</button>
                 <div class="controls-stack">
                     <div class="brightness-wrap">
                         <span class="brightness-icon" id="brightnessIcon" onclick="toggleBlackout()" style="cursor:pointer;user-select:none" title="Toggle blackout">☀</span>
@@ -1678,10 +1852,12 @@
         nodes.forEach(n => { n.textContent = text; });
     }
 
-    async function fetchMissingDurations(list) {
+    async function fetchMissingDurations(list, token) {
         const cache = getDurationCache();
         const missing = list.filter(v => !cache[v.id]).map(v => v.id);
         if (!missing.length) return;
+        // Если передан токен загрузки — прерываемся, как только стартовала новая загрузка.
+        const isStale = () => (token !== undefined && token !== playlistLoadToken);
 
         // Батчами по 50 id, параллельно, но с ограничением по количеству
         const batches = [];
@@ -1693,11 +1869,14 @@
         let cursor = 0;
         const worker = async () => {
             while (cursor < batches.length) {
+                if (isStale()) return;
                 const my = batches[cursor++];
                 try {
                     const url = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${my.join(',')}&key=${API_KEY}`;
                     const res = await fetch(url);
+                    if (isStale()) return;
                     const data = await res.json();
+                    if (isStale()) return;
                     if (data.error) { console.warn('[duration] api error', data.error.message); continue; }
                     (data.items || []).forEach(it => {
                         const dur = formatISODuration(it.contentDetails && it.contentDetails.duration);
@@ -2140,6 +2319,17 @@
         } catch(e) {}
         const songElement = document.getElementById('current-song');
         songElement.addEventListener('mouseenter', handleSongMouseEnter);
+        // Под мобильную ширину сжимаем placeholder URL-инпута (длинный текст не влезает в одну строку с кнопками)
+        applyResponsivePlaceholder();
+        window.addEventListener('resize', applyResponsivePlaceholder);
+    }
+
+    function applyResponsivePlaceholder() {
+        const inp = document.getElementById('playlist-url');
+        if (!inp) return;
+        inp.placeholder = (window.innerWidth <= 768)
+            ? 'Playlist link…'
+            : 'Paste YouTube playlist link...';
     }
 
     function handleVideoEnd() {
@@ -2147,11 +2337,19 @@
         else nextVideo();
     }
 
+    // Токен текущей загрузки плейлиста. При каждом новом вызове loadPlaylist инкрементируется,
+    // все старые in-flight fetch'ы видят расхождение и выходят без записи в глобалы/DOM —
+    // это убирает смешивание двух плейлистов при быстром переключении.
+    let playlistLoadToken = 0;
+
     async function loadPlaylist() {
         const url = document.getElementById('playlist-url').value;
         const match = url.match(/[&?]list=([^&]+)/);
         const playlistId = match ? match[1] : null;
         if (!playlistId) { alert('Please paste a valid YouTube playlist link'); return; }
+
+        const myToken = ++playlistLoadToken;
+        const isStale = () => myToken !== playlistLoadToken;
 
         currentPlaylistUrl = url;
         const btn = document.getElementById('load-btn');
@@ -2159,24 +2357,33 @@
         btn.innerText = "Loading...";
 
         try {
-            currentPlaylistTitle = await getPlaylistTitle(playlistId);
-            originalList = [];
+            const title = await getPlaylistTitle(playlistId);
+            if (isStale()) return;
+            currentPlaylistTitle = title;
+
+            // Собираем локально — не трогаем глобальный originalList, пока не уверены, что это актуальная загрузка
+            const collected = [];
             let nextPageToken = '';
             do {
                 const apiUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${playlistId}&key=${API_KEY}&pageToken=${nextPageToken}`;
                 const response = await fetch(apiUrl);
+                if (isStale()) return;
                 const data = await response.json();
+                if (isStale()) return;
                 if (data.error) throw new Error(data.error.message);
                 const items = data.items.map(item => {
                     const s = item.snippet;
                     const thumb = s.thumbnails?.medium?.url || s.thumbnails?.default?.url || 'https://via.placeholder.com/120x68?text=No+Thumb';
                     return { id: s.resourceId.videoId, title: s.title, thumb: thumb };
                 });
-                originalList = originalList.concat(items);
+                collected.push(...items);
                 nextPageToken = data.nextPageToken;
-                btn.innerText = `Loaded ${originalList.length}...`;
+                btn.innerText = `Loaded ${collected.length}...`;
             } while (nextPageToken);
 
+            if (isStale()) return;
+
+            originalList = collected;
             currentQueue = [...originalList];
             document.getElementById('video-count').innerText = `${originalList.length} videos`;
             currentIndex = 0;
@@ -2206,13 +2413,18 @@
                 });
             }
             // Фоново догружаем недостающие длительности, не блокируя UI
-            fetchMissingDurations(originalList);
+            fetchMissingDurations(originalList, myToken);
         } catch (error) {
+            if (isStale()) return; // ошибка устаревшей загрузки — пользователю не показываем
             console.error("API Error:", error);
             alert("Error loading playlist: " + error.message);
         } finally {
-            btn.disabled = false;
-            btn.innerText = "Load";
+            // Кнопку возвращаем в исходное только если это всё ещё актуальная загрузка,
+            // иначе новый вызов уже выставил "Loading..." и мы его не перебиваем.
+            if (!isStale()) {
+                btn.disabled = false;
+                btn.innerText = "Load";
+            }
         }
     }
 
