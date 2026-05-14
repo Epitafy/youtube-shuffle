@@ -1030,32 +1030,6 @@
             transform: translateX(-50%) translateY(0);
         }
 
-        /* ── PWA: WINDOW CONTROLS OVERLAY ──
-           Активируется когда сайт установлен как PWA с display_override: window-controls-overlay.
-           Шапка занимает место бывшей системной полоски, в правом углу остаются только
-           минимизировать/развернуть/закрыть. Резервируем под них место (Windows ≈ 140px). */
-        @media all and (display-mode: window-controls-overlay) {
-            header {
-                /* Фоллбек для браузеров без поддержки env(titlebar-area-*) — фиксированные 140px справа */
-                padding-right: 140px;
-                /* Когда WCO env-переменные доступны (Chromium на Windows) — точный расчёт ширины
-                   области, занятой кнопками управления окном, на основе titlebar-area-width. */
-                padding-right: calc(100vw - env(titlebar-area-width, calc(100vw - 140px)) - env(titlebar-area-x, 0px));
-                -webkit-app-region: drag;
-                app-region: drag;
-            }
-            /* Интерактивные элементы внутри шапки не должны перетаскивать окно */
-            header .logo,
-            header .url-input,
-            header .btn,
-            header .lobby-btn,
-            header .lobby-pill,
-            header .lobby-pill * {
-                -webkit-app-region: no-drag;
-                app-region: no-drag;
-            }
-        }
-
         /* ── MOBILE LAYOUT (≤768px) ──
            Раскладка для телефонов: шапка с переносом, видео сверху,
            контролы и регуляторы под видео, очередь снизу.
@@ -1246,6 +1220,32 @@
                 min-width: 32px;
                 padding: 0;
                 font-size: 14px;
+            }
+        }
+
+        /* ── PWA: WINDOW CONTROLS OVERLAY ──
+           Активируется когда сайт установлен как PWA с display_override: window-controls-overlay.
+           Шапка занимает место бывшей системной полоски, в правом углу остаются только
+           минимизировать/развернуть/закрыть. Резервируем под них место.
+           Этот блок стоит ПОСЛЕ мобильных media queries, чтобы перебивать их
+           padding на узком окне (иначе Lobby уезжает под системные кнопки). */
+        @media all and (display-mode: window-controls-overlay) {
+            header {
+                /* Резерв слева под dropdown/⋯ Edge (titlebar-area-x) и справа под ─ □ ✕ */
+                padding-left: calc(env(titlebar-area-x, 0px) + 14px) !important;
+                padding-right: calc(100vw - env(titlebar-area-width, calc(100vw - 140px)) - env(titlebar-area-x, 0px) + 14px) !important;
+                -webkit-app-region: drag;
+                app-region: drag;
+            }
+            /* Интерактивные элементы внутри шапки не должны перетаскивать окно */
+            header .logo,
+            header .url-input,
+            header .btn,
+            header .lobby-btn,
+            header .lobby-pill,
+            header .lobby-pill * {
+                -webkit-app-region: no-drag;
+                app-region: no-drag;
             }
         }
     </style>
