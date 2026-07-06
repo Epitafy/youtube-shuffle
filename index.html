@@ -58,12 +58,17 @@
         }
 
         .logo {
-            font-size: 13px;
-            font-family: 'DM Mono', monospace;
-            font-weight: 500;
-            letter-spacing: 0.12em;
+            font-size: 15px;
+            font-family: 'Syne', sans-serif;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: lowercase;
             color: var(--accent);
             white-space: nowrap;
+            background: linear-gradient(135deg, #6c63ff 0%, #8b83ff 50%, #6c63ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         .url-bar {
@@ -460,6 +465,14 @@
 
         /* Logo glow (статичное, без бесконечной анимации text-shadow — она грузила CPU постоянной перерисовкой) */
         .logo {
+            font-family: 'Syne', sans-serif;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: lowercase;
+            background: linear-gradient(135deg, #6c63ff 0%, #8b83ff 50%, #6c63ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
             text-shadow: 0 0 12px rgba(108,99,255,0.45);
             cursor: pointer;
             user-select: none;
