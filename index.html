@@ -1856,8 +1856,13 @@
     }
 
     // Apply remote state snapshot
+    let _pendingRemoteState = null;
     function onLobbyRemoteState(state) {
         if (!state) return;
+        // Во время перетаскивания трека не трогаем DOM/плеер: входящие снапшоты
+        // (тики воспроизведения других участников) иначе перерисовывают список и
+        // рвут drag → сильные лаги. Копим последний и применяем после отпускания.
+        if (_qDrag) { _pendingRemoteState = state; return; }
         // Ignore our own writes (echo)
         if (state.updatedBy === LOBBY.clientId && LOBBY.lastState) { LOBBY.lastState = state; return; }
 
@@ -2785,11 +2790,11 @@
     async function addSongToQueue() {
         const input = document.getElementById('add-song-url');
         const vid = parseVideoId(input.value);
-        // Не ссылка → трактуем как поиск: поднимаем первое совпадение из очереди наверх.
+        // Не ссылка → трактуем как поиск: первое совпадение ставим сразу за играющим.
         if (!vid) {
             const matches = queueSearchMatches(input.value);
             if (matches.length) {
-                moveTrackToTop(matches[0].index);
+                moveTrackAfterCurrent(matches[0].index);
                 input.value = '';
                 hideQueueSearch();
                 return;
@@ -2805,11 +2810,17 @@
             const meta = await getVideoMeta(vid);
             if (meta.duration) { getDurationCache()[vid] = meta.duration; saveDurationCache(); }
             const wasEmpty = currentQueue.length === 0;
-            // Новый трек — в начало очереди.
-            currentQueue.unshift(meta);
-            originalList.unshift(meta);
-            // Играющий трек сдвинулся на одну позицию вниз — сохраняем подсветку.
-            if (!wasEmpty) currentIndex++;
+            if (wasEmpty) {
+                currentQueue.unshift(meta);
+                originalList.unshift(meta);
+            } else {
+                // Новый трек — сразу за играющим (play next).
+                const playing = currentQueue[currentIndex];
+                currentQueue.splice(currentIndex + 1, 0, meta);
+                const op = originalList.indexOf(playing);
+                if (op >= 0) originalList.splice(op + 1, 0, meta); else originalList.push(meta);
+                // currentIndex не меняется — вставили после играющего.
+            }
             document.getElementById('video-count').innerText = `${currentQueue.length} videos`;
             input.value = '';
             hideQueueSearch();
@@ -2825,20 +2836,19 @@
         }
     }
 
-    // Перемещает трек из очереди на первую позицию (с сохранением подсветки играющего).
-    function moveTrackToTop(idx) {
-        if (idx <= 0 || idx >= currentQueue.length) { if (idx === 0) hideQueueSearch(); return; }
+    // Перемещает трек из очереди сразу за играющий (play next), сохраняя подсветку.
+    function moveTrackAfterCurrent(idx) {
+        if (idx < 0 || idx >= currentQueue.length || idx === currentIndex) { hideQueueSearch(); return; }
+        const playing = currentQueue[currentIndex];
         const [track] = currentQueue.splice(idx, 1);
-        currentQueue.unshift(track);
-        if (currentIndex === idx) currentIndex = 0;
-        else if (currentIndex < idx) currentIndex++;
-        // (currentIndex > idx остаётся прежним)
+        const playPos = currentQueue.indexOf(playing);
+        currentQueue.splice(playPos + 1, 0, track);
+        currentIndex = currentQueue.indexOf(playing);
         originalList = currentQueue.slice();
         renderList();
         broadcastQueueChange();
-        const cont = document.getElementById('playlist-items');
-        const first = cont && cont.querySelector('.video-item');
-        if (first) first.scrollIntoView({ block: 'center' });
+        const moved = document.querySelector(`.video-item[data-qindex="${playPos + 1}"]`);
+        if (moved) moved.scrollIntoView({ block: 'center' });
     }
 
     // Поиск по названиям треков в текущей очереди.
@@ -2880,7 +2890,7 @@
 
     function pickQueueSearch(index) {
         const input = document.getElementById('add-song-url');
-        moveTrackToTop(index);
+        moveTrackAfterCurrent(index);
         input.value = '';
         hideQueueSearch();
     }
@@ -3038,7 +3048,11 @@
         const order = Array.from(d.container.querySelectorAll('.video-item')).map(el => +el.dataset.qindex);
         _qDrag = null;
         const changed = order.some((v, i) => v !== i);
-        if (!changed) return;
+        if (!changed) {
+            // Порядок не изменился — просто досинхронизируем то, что пришло во время drag.
+            flushPendingRemote();
+            return;
+        }
         const newQueue = order.map(i => currentQueue[i]).filter(Boolean);
         const newIndex = order.indexOf(currentIndex);
         currentQueue = newQueue;
@@ -3047,6 +3061,16 @@
         originalList = currentQueue.slice();
         renderList();
         broadcastQueueChange();
+        // Наш новый порядок — последний; накопленный за время drag снапшот устарел, отбрасываем.
+        _pendingRemoteState = null;
+    }
+
+    // Применяет отложенный за время перетаскивания снапшот лобби (если был).
+    function flushPendingRemote() {
+        if (!_pendingRemoteState) return;
+        const s = _pendingRemoteState;
+        _pendingRemoteState = null;
+        onLobbyRemoteState(s);
     }
 
     function playVideo(index) {
