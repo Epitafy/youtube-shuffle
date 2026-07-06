@@ -706,7 +706,13 @@
             padding: 8px 16px;
             cursor: pointer;
             transition: background 0.15s;
-            position: relative;
+            /* Виртуализация: строки позиционируются абсолютно внутри #pl-sizer
+               по фиксированной высоте, в DOM живут только видимые. */
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 65px;
+            box-sizing: border-box;
         }
         .video-item:hover { background: var(--surface2); }
         .video-item.active {
@@ -870,8 +876,11 @@
             opacity: 0.97;
         }
         .video-item.dragging .drag-handle { opacity: 1; cursor: grabbing; }
-        /* Пустое место, куда ляжет трек при отпускании. */
+        /* Пустое место, куда ляжет трек при отпускании (абсолютно в #pl-sizer). */
         .drag-placeholder {
+            position: absolute;
+            left: 0;
+            right: 0;
             border: 1px dashed var(--accent);
             border-radius: 6px;
             background: rgba(108,99,255,0.08);
@@ -1920,9 +1929,7 @@
                     // Видео то же, но индекс разъехался — обновим подсветку в списке.
                     currentIndex = targetIndex;
                     saveSessionIndex();
-                    document.querySelectorAll('.video-item').forEach(el => el.classList.remove('active'));
-                    const a = document.getElementById(`v-${currentIndex}`);
-                    if (a) { a.classList.add('active'); a.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+                    highlightActive(currentIndex, true);
                 }
             }
 
@@ -2686,6 +2693,13 @@
     function saveSessionIndex() {
         try { localStorage.setItem(SESSION_INDEX_KEY, String(currentIndex)); } catch (e) {}
     }
+    // Сериализация всей очереди (до 2500 треков) в localStorage — дорого,
+    // поэтому не делаем это синхронно на каждый renderList, а откладываем.
+    let _sessionSaveTimer = null;
+    function scheduleSessionSave() {
+        if (_sessionSaveTimer) clearTimeout(_sessionSaveTimer);
+        _sessionSaveTimer = setTimeout(() => { _sessionSaveTimer = null; saveSessionQueue(); }, 800);
+    }
 
     // При запуске подтягиваем последний плейлист (если не заходим в лобби).
     function restoreLastSession() {
@@ -2711,12 +2725,107 @@
         try { fetchMissingDurations(currentQueue); } catch (e) {}
     }
 
+    // ── ВИРТУАЛИЗАЦИЯ СПИСКА ─────────────────────────────────────────────
+    // В DOM держим только видимые строки (+буфер), остальные — виртуальные.
+    // Это ключ к плавности на больших плейлистах (2500+ треков): вместо
+    // ~20000 узлов в дереве живёт пара десятков.
+    const ROW_H = 65;            // фикс. высота строки (см. .video-item в CSS)
+    const ROW_BUFFER = 8;        // сколько строк рендерим сверх видимой области
+    let _sizer = null;           // распорка, задаёт полную высоту прокрутки
+    let _activeItemEl = null;
+    let _listDelegated = false;
+    let _scrollRaf = 0;
+
+    function itemHtml(video, index) {
+        return `<div class="video-item${index === currentIndex ? ' active' : ''}" id="v-${index}" data-qindex="${index}" style="top:${index * ROW_H}px">`
+            + `<span class="drag-handle" title="Drag to reorder">⠿</span>`
+            + `<img src="${video.thumb || ''}" loading="lazy">`
+            + `<div class="video-item-info">`
+            + `<div class="video-title">${video.title || ''}</div>`
+            + `<div class="video-meta"><span class="video-duration" data-vid="${video.id}">${video.duration || '—:—'}</span></div>`
+            + `</div>`
+            + `<button class="video-remove" title="Remove from queue">✕</button>`
+            + `</div>`;
+    }
+
+    // Отрисовать только окно видимых строк по текущему scrollTop.
+    function renderWindow() {
+        const container = document.getElementById('playlist-items');
+        if (!_sizer) return;
+        const contH = container.clientHeight || 1;
+        const scrollTop = container.scrollTop;
+        let first = Math.floor(scrollTop / ROW_H) - ROW_BUFFER;
+        let last = Math.ceil((scrollTop + contH) / ROW_H) + ROW_BUFFER;
+        first = Math.max(0, first);
+        last = Math.min(currentQueue.length - 1, last);
+        let html = '';
+        for (let i = first; i <= last; i++) {
+            const from = _qDrag ? _qDrag.fromIndex : -1;
+            if (i === from) continue; // перетаскиваемый элемент «плавает» отдельно
+            html += itemHtml(currentQueue[i], i);
+        }
+        // Во время перетаскивания сдвигаем строки, освобождая место под плейсхолдер.
+        _sizer.innerHTML = html;
+        if (_qDrag) applyDragGap();
+        _activeItemEl = document.getElementById(`v-${currentIndex}`);
+    }
+
+    function onListScroll() {
+        if (_scrollRaf) return;
+        _scrollRaf = requestAnimationFrame(() => { _scrollRaf = 0; renderWindow(); });
+    }
+
+    // Подсветка играющего трека. scroll=true — центрируем его в списке.
+    function highlightActive(index, scroll) {
+        if (scroll) {
+            const container = document.getElementById('playlist-items');
+            const contH = container.clientHeight || 1;
+            const maxTop = Math.max(0, currentQueue.length * ROW_H - contH);
+            let st = index * ROW_H - contH / 2 + ROW_H / 2;
+            st = Math.max(0, Math.min(st, maxTop));
+            container.scrollTop = st;
+            renderWindow();
+        } else {
+            if (_activeItemEl) _activeItemEl.classList.remove('active');
+            _activeItemEl = document.getElementById(`v-${index}`);
+            if (_activeItemEl) _activeItemEl.classList.add('active');
+        }
+    }
+
+    // Делегирование: один набор слушателей на весь список вместо 3 на каждый трек.
+    function setupListDelegation(container) {
+        if (_listDelegated) return;
+        _listDelegated = true;
+        container.addEventListener('click', (e) => {
+            const item = e.target.closest('.video-item');
+            if (!item) return;
+            if (e.target.closest('.video-remove')) {
+                e.stopPropagation();
+                removeFromQueue(+item.dataset.qindex);
+                return;
+            }
+            if (e.target.closest('.drag-handle')) return; // клик по хвату не запускает трек
+            playVideo(+item.dataset.qindex);
+        });
+        container.addEventListener('pointerdown', (e) => {
+            if (!e.target.closest('.drag-handle')) return;
+            const item = e.target.closest('.video-item');
+            if (!item) return;
+            e.preventDefault();
+            e.stopPropagation();
+            startQueueDrag(e, item, container);
+        });
+        container.addEventListener('scroll', onListScroll, { passive: true });
+        window.addEventListener('resize', () => { if (_sizer) renderWindow(); });
+    }
+
     function renderList() {
         const container = document.getElementById('playlist-items');
         updateEmptyOverlay();
-        saveSessionQueue();
-        container.innerHTML = '';
+        scheduleSessionSave();
         if (!currentQueue.length) {
+            _activeItemEl = null;
+            _sizer = null;
             container.innerHTML = `
                 <div class="state-empty">
                     <div class="state-empty-icon">☰</div>
@@ -2724,30 +2833,11 @@
                 </div>`;
             return;
         }
-        const fragment = document.createDocumentFragment();
-        currentQueue.forEach((video, index) => {
-            const div = document.createElement('div');
-            div.className = `video-item ${index === currentIndex ? 'active' : ''}`;
-            div.id = `v-${index}`;
-            div.dataset.qindex = index;
-            div.onclick = () => playVideo(index);
-            div.innerHTML = `
-                <span class="drag-handle" title="Drag to reorder">⠿</span>
-                <img src="${video.thumb}" loading="lazy">
-                <div class="video-item-info">
-                    <div class="video-title">${video.title}</div>
-                    <div class="video-meta"><span class="video-duration" data-vid="${video.id}">${video.duration || '—:—'}</span></div>
-                </div>
-                <button class="video-remove" title="Remove from queue">✕</button>
-            `;
-            const removeBtn = div.querySelector('.video-remove');
-            removeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeFromQueue(index); });
-            attachQueueDrag(div.querySelector('.drag-handle'), div, container);
-            fragment.appendChild(div);
-        });
-        container.appendChild(fragment);
-        const activeElem = document.getElementById(`v-${currentIndex}`);
-        if (activeElem) activeElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        container.innerHTML = `<div id="pl-sizer" style="position:relative;height:${currentQueue.length * ROW_H}px"></div>`;
+        _sizer = document.getElementById('pl-sizer');
+        setupListDelegation(container);
+        // Центрируем текущий трек и рисуем окно вокруг него.
+        highlightActive(currentIndex, true);
     }
 
     // ── ADD / REMOVE / REORDER QUEUE (синхронно с лобби) ──
@@ -2944,28 +3034,28 @@
         if (wasPlaying && currentQueue.length > 0) playVideo(currentIndex);
     }
 
-    // Перетаскивание треков в очереди: элемент «поднимается» (position: fixed)
-    // и едет за курсором, а на его место встаёт плейсхолдер. Работает мышью и тачем.
+    // Перетаскивание треков в виртуализированной очереди. Перетаскиваемый элемент
+    // «поднимается» (position: fixed) и едет за курсором; остальные строки
+    // раздвигаются, освобождая слот под плейсхолдер. Позиция вычисляется
+    // арифметически по индексам (ROW_H), а не сканом DOM — быстро и на 2500 треках.
     let _qDrag = null;
-    function attachQueueDrag(handle, item, container) {
-        if (!handle) return;
-        handle.addEventListener('click', (e) => e.stopPropagation());
-        handle.addEventListener('pointerdown', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            startQueueDrag(e, item, container);
-        });
-    }
 
     function startQueueDrag(e, item, container) {
         const rect = item.getBoundingClientRect();
+        const fromIndex = +item.dataset.qindex;
         const placeholder = document.createElement('div');
         placeholder.className = 'drag-placeholder';
-        placeholder.style.height = rect.height + 'px';
-        container.insertBefore(placeholder, item.nextSibling);
+        placeholder.style.height = ROW_H + 'px';
+        placeholder.style.top = (fromIndex * ROW_H) + 'px';
+        _sizer.appendChild(placeholder);
+
+        // Выносим плавающий элемент из #pl-sizer, чтобы renderWindow (innerHTML)
+        // его не уничтожал при перерисовке окна во время drag.
+        container.appendChild(item);
 
         _qDrag = {
-            item, container, placeholder,
+            item, container, placeholder, fromIndex,
+            targetIndex: fromIndex,
             grabDX: e.clientX - rect.left,
             grabDY: e.clientY - rect.top,
             width: rect.width,
@@ -2977,6 +3067,7 @@
         item.style.position = 'fixed';
         item.style.zIndex = '9999';
         item.style.width = rect.width + 'px';
+        item.style.height = ROW_H + 'px';
         item.style.pointerEvents = 'none';
         item.style.left = rect.left + 'px';
         item.style.top = rect.top + 'px';
@@ -2984,6 +3075,8 @@
         document.addEventListener('pointermove', onQueueDragMove);
         document.addEventListener('pointerup', onQueueDragEnd);
         document.addEventListener('pointercancel', onQueueDragEnd);
+        renderWindow();               // убираем строку from из потока и раздвигаем
+        updateDragTarget(e.clientY);
         startEdgeAutoScroll();
     }
 
@@ -2994,20 +3087,34 @@
         d.lastClientY = e.clientY;
         d.item.style.left = (e.clientX - d.grabDX) + 'px';
         d.item.style.top = (e.clientY - d.grabDY) + 'px';
-        repositionPlaceholder(e.clientY);
+        updateDragTarget(e.clientY);
     }
 
-    function repositionPlaceholder(y) {
+    // Целевой индекс = слот под курсором (в координатах итогового массива).
+    function updateDragTarget(clientY) {
         const d = _qDrag;
-        const siblings = Array.from(d.container.querySelectorAll('.video-item'))
-            .filter(el => el !== d.item);
-        let target = null;
-        for (const sib of siblings) {
-            const r = sib.getBoundingClientRect();
-            if (y < r.top + r.height / 2) { target = sib; break; }
+        const contRect = d.container.getBoundingClientRect();
+        const yContent = (clientY - contRect.top) + d.container.scrollTop;
+        let slot = Math.floor(yContent / ROW_H);
+        slot = Math.max(0, Math.min(currentQueue.length - 1, slot));
+        if (slot !== d.targetIndex) {
+            d.targetIndex = slot;
+            applyDragGap();
         }
-        if (target) d.container.insertBefore(d.placeholder, target);
-        else d.container.appendChild(d.placeholder);
+    }
+
+    // Раздвигает видимые строки, освобождая слот targetIndex под плейсхолдер.
+    function applyDragGap() {
+        const d = _qDrag;
+        if (!d) return;
+        const from = d.fromIndex, to = d.targetIndex;
+        d.placeholder.style.top = (to * ROW_H) + 'px';
+        _sizer.querySelectorAll('.video-item').forEach(el => {
+            const i = +el.dataset.qindex;
+            const r = i > from ? i - 1 : i;           // индекс после «изъятия» from
+            const finalPos = r >= to ? r + 1 : r;     // сдвиг под вставку на to
+            el.style.top = (finalPos * ROW_H) + 'px';
+        });
     }
 
     // Автопрокрутка списка, когда тащишь трек к верхнему/нижнему краю.
@@ -3018,13 +3125,15 @@
             const cr = d.container.getBoundingClientRect();
             const y = d.lastClientY;
             const zone = 48;
+            let scrolled = false;
             if (y < cr.top + zone) {
                 d.container.scrollTop -= Math.ceil((cr.top + zone - y) / zone * 12);
-                repositionPlaceholder(y);
+                scrolled = true;
             } else if (y > cr.bottom - zone) {
                 d.container.scrollTop += Math.ceil((y - (cr.bottom - zone)) / zone * 12);
-                repositionPlaceholder(y);
+                scrolled = true;
             }
+            if (scrolled) { renderWindow(); updateDragTarget(y); }
             d.rafScroll = requestAnimationFrame(step);
         };
         _qDrag.rafScroll = requestAnimationFrame(step);
@@ -3038,25 +3147,22 @@
         document.removeEventListener('pointercancel', onQueueDragEnd);
         if (d.rafScroll) cancelAnimationFrame(d.rafScroll);
 
-        // Ставим трек на место плейсхолдера и снимаем «плавающие» стили.
-        d.container.insertBefore(d.item, d.placeholder);
-        d.placeholder.remove();
-        d.item.classList.remove('dragging');
-        d.item.style.cssText = '';
-
-        // Новый порядок читаем по data-qindex (устойчиво к дубликатам треков).
-        const order = Array.from(d.container.querySelectorAll('.video-item')).map(el => +el.dataset.qindex);
+        const from = d.fromIndex, to = d.targetIndex;
+        if (d.item.parentNode) d.item.parentNode.removeChild(d.item);
+        if (d.placeholder.parentNode) d.placeholder.parentNode.removeChild(d.placeholder);
         _qDrag = null;
-        const changed = order.some((v, i) => v !== i);
-        if (!changed) {
-            // Порядок не изменился — просто досинхронизируем то, что пришло во время drag.
+
+        if (to === from) {
+            renderWindow();          // возвращаем строку from на место
             flushPendingRemote();
             return;
         }
-        const newQueue = order.map(i => currentQueue[i]).filter(Boolean);
-        const newIndex = order.indexOf(currentIndex);
-        currentQueue = newQueue;
-        if (newIndex >= 0) currentIndex = newIndex;
+        // Двигаем трек from → to. Играющий отслеживаем по ссылке (устойчиво к сдвигам).
+        const playing = currentQueue[currentIndex];
+        const moved = currentQueue[from];
+        currentQueue.splice(from, 1);
+        currentQueue.splice(to, 0, moved);
+        currentIndex = currentQueue.indexOf(playing);
         // Ручной порядок становится каноничным (unshuffle его не сбросит).
         originalList = currentQueue.slice();
         renderList();
@@ -3073,19 +3179,33 @@
         onLobbyRemoteState(s);
     }
 
+    // Склейка загрузок: при быстром перещёлкивании треков не дёргаем loadVideoById
+    // на каждый клик (иначе запросы к YouTube наслаиваются и плеер начинает тормозить).
+    // Первый клик грузится сразу (сохраняем user-gesture для автоплея), а плотная
+    // серия переключений коалесцируется в одну загрузку финального трека.
+    let _loadTimer = null, _lastLoadAt = 0;
+    const LOAD_COALESCE_MS = 400;
+    function requestVideoLoad(id) {
+        const now = Date.now();
+        const since = now - _lastLoadAt;
+        if (_loadTimer) { clearTimeout(_loadTimer); _loadTimer = null; }
+        const doLoad = () => {
+            _loadTimer = null;
+            _lastLoadAt = Date.now();
+            try { player.loadVideoById(id); } catch (e) {}
+        };
+        if (since >= LOAD_COALESCE_MS) doLoad();
+        else _loadTimer = setTimeout(doLoad, LOAD_COALESCE_MS - since);
+    }
+
     function playVideo(index) {
         if (index < 0 || index >= currentQueue.length) return;
         currentIndex = index;
         saveSessionIndex();
-        player.loadVideoById(currentQueue[currentIndex].id);
+        requestVideoLoad(currentQueue[currentIndex].id);
         updateMediaSession();
         if (!isShowingPlaylistName) updateCurrentSongDisplay();
-        document.querySelectorAll('.video-item').forEach(el => el.classList.remove('active'));
-        const activeElem = document.getElementById(`v-${currentIndex}`);
-        if (activeElem) {
-            activeElem.classList.add('active');
-            activeElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
+        highlightActive(currentIndex, true);
         // Broadcast: смена трека — с currentTime=0 и play
         if (LOBBY.ref && !LOBBY.applyingRemote) {
             lobbyBroadcast({
