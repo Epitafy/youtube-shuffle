@@ -819,14 +819,12 @@
             color: var(--accent);
             border-radius: 4px;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 16px;
             padding: 0;
-            line-height: 1;
-            display: flex;
+            line-height: 0;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-family: 'DM Mono', monospace;
-            font-weight: 700;
             transition: background 0.15s, color 0.15s;
         }
         .queue-add-btn:hover { background: var(--accent); color: #fff; }
@@ -1625,7 +1623,7 @@
     // --- CONFIG ---
     // Version/build number (update when making changes).
     // Format: 1.27, 1.28, ... (increment the minor number for releases).
-    const BUILD_VERSION = '1.28';
+    const BUILD_VERSION = '1.29';
     const API_KEY = 'AIzaSyBaIt7mKZFhneA4vpnTGGrj091rPc0KvCE';
 
     // --- FIREBASE / LOBBY CONFIG ---
@@ -2587,8 +2585,16 @@
     // Прошлый приём с масштабированием iframe до 480p ломал оверлей и не давал выигрыша
     // по CPU, поэтому убран. Запрос низкого качества оставляем best-effort (YouTube его
     // часто игнорирует, но вреда нет).
+    let _lastForcedVideoId = '';
     function forceLowQuality() {
         try {
+            const currentVideoId = (player && typeof player.getVideoData === 'function')
+                ? ((player.getVideoData() || {}).video_id || '')
+                : '';
+            // В Chromium не дёргаем quality API бесконечно на одном и том же ролике:
+            // лишние вызовы через onPlaybackQualityChange могут сами создавать churn.
+            if (currentVideoId && currentVideoId === _lastForcedVideoId) return;
+            if (currentVideoId) _lastForcedVideoId = currentVideoId;
             if (player && typeof player.setPlaybackQualityRange === 'function') player.setPlaybackQualityRange('medium', 'large');
             if (player && typeof player.setPlaybackQuality === 'function') player.setPlaybackQuality('large');
         } catch (e) {}
@@ -2632,7 +2638,9 @@
                     forceLowQuality();
                     if (onReadyExtra) { try { onReadyExtra(); } catch(e) {} }
                 },
-                'onPlaybackQualityChange': () => { forceLowQuality(); },
+                // Не переустанавливаем качество из onPlaybackQualityChange:
+                // в Chromium это может раскручивать лишний цикл quality-change событий.
+                'onPlaybackQualityChange': () => {},
                 'onStateChange': (e) => {
                     if (e.data === YT.PlayerState.ENDED) handleVideoEnd();
                     if (e.data === YT.PlayerState.PLAYING) { _consecutiveErrors = 0; forceLowQuality(); } // трек ожил — сбрасываем счётчик, держим 480p
@@ -3361,6 +3369,7 @@
     function playVideo(index) {
         if (index < 0 || index >= currentQueue.length) return;
         currentIndex = index;
+        _lastForcedVideoId = '';
         scheduleIndexSave();
         requestVideoLoad(currentQueue[currentIndex].id);
         updateMediaSession();
@@ -3637,8 +3646,6 @@
         const video = currentQueue[currentIndex];
         if (!video) return;
         initMediaSessionHandlers();
-        const audio = document.getElementById('silentAudio');
-        if (audio && audio.paused) { audio.volume = 0; audio.play().catch(() => {}); }
         navigator.mediaSession.metadata = new MediaMetadata({
             title: video.title,
             artist: 'YouTube Playlist',
