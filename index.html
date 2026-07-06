@@ -12,6 +12,7 @@
     <meta name="apple-mobile-web-app-title" content="Shuffle">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
+    <link rel="stylesheet" href="splash.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700&display=swap');
 
@@ -1444,6 +1445,18 @@
     </style>
 </head>
 <body>
+
+<div id="splash" role="presentation" aria-hidden="true">
+    <div class="splash-center" tabindex="0" aria-label="Launch application">
+        <svg class="logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <polygon points="16,12 16,52 48,32" />
+        </svg>
+        <div class="shuffle">shuffle</div>
+        <div class="subtitle">ambient playlist launcher</div>
+        <div class="deco deco-left"></div>
+        <div class="deco deco-right"></div>
+    </div>
+</div>
 
 <!-- Silent audio to capture media session from YouTube iframe -->
 <audio id="silentAudio" loop>
@@ -3679,5 +3692,6 @@
     });
 
 </script>
+<script src="splash.js"></script>
 </body>
 </html>
