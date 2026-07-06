@@ -58,7 +58,7 @@
         }
 
         .logo {
-            font-size: 15px;
+            font-size: 17px;
             font-family: 'Syne', sans-serif;
             font-weight: 700;
             letter-spacing: 0.16em;
@@ -226,7 +226,8 @@
             flex: 0 0 68px;
             height: 3px;
             border-radius: 2px;
-            background: var(--border2);
+            border: none;
+            background: linear-gradient(to right, var(--accent) 0%, var(--accent) 50%, var(--border2) 50%, var(--border2) 100%);
             outline: none;
             cursor: pointer;
         }
@@ -235,9 +236,10 @@
             width: 11px;
             height: 11px;
             border-radius: 50%;
-            background: var(--muted);
+            background: var(--text);
             cursor: pointer;
             transition: background 0.15s, transform 0.15s;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
         }
         .brightness-slider:hover::-webkit-slider-thumb {
             background: var(--text);
@@ -248,8 +250,14 @@
             height: 11px;
             border: none;
             border-radius: 50%;
-            background: var(--muted);
+            background: var(--text);
             cursor: pointer;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
+        }
+        .brightness-slider::-moz-range-track {
+            height: 3px;
+            border-radius: 2px;
+            background: linear-gradient(to right, var(--accent) 0%, var(--accent) 50%, var(--border2) 50%, var(--border2) 100%);
         }
 
         /* Vertical stack: brightness on top, volume below */
@@ -964,10 +972,13 @@
             margin: 0 12px 8px 12px;
             min-width: 0;
             position: relative;
+            background: rgba(10, 10, 12, 0.95);
+            border: 1px solid rgba(255,255,255,0.04);
         }
 
         .playlist-item:hover {
-            background: var(--accent-dim);
+            background: rgba(17, 17, 20, 0.98);
+            border-color: rgba(108, 99, 255, 0.25);
         }
 
         .playlist-item-title {
@@ -1465,7 +1476,7 @@
             <polygon points="16,12 16,52 48,32" />
         </svg>
         <div class="shuffle">shuffle</div>
-        <div class="subtitle">ambient playlist launcher</div>
+        <div class="subtitle">sync the sound</div>
         <div class="deco deco-left"></div>
         <div class="deco deco-right"></div>
     </div>
@@ -3499,8 +3510,10 @@
             overlay.classList.remove("active");
         }
         const slider = document.getElementById("brightnessSlider");
-        const pct = (value / 85) * 100;
-        slider.style.background = `linear-gradient(to right, var(--border) ${pct}%, var(--border2) ${pct}%)`;
+        const safeValue = Math.max(0, Math.min(85, parseInt(value, 10) || 0));
+        const pct = (safeValue / 85) * 100;
+        slider.value = safeValue;
+        slider.style.background = `linear-gradient(to right, var(--accent) 0%, var(--accent) ${pct}%, var(--border2) ${pct}%, var(--border2) 100%)`;
     }
 
     // ---- VOLUME ----
@@ -3508,10 +3521,12 @@
     function _paintVolumeSlider(v) {
         const slider = document.getElementById('volumeSlider');
         if (!slider) return;
-        slider.value = v;
-        slider.style.background = `linear-gradient(to right, var(--border) ${v}%, var(--border2) ${v}%)`;
+        const value = Math.max(0, Math.min(100, parseInt(v, 10) || 0));
+        const pct = value / 100 * 100;
+        slider.value = value;
+        slider.style.background = `linear-gradient(to right, var(--accent) 0%, var(--accent) ${pct}%, var(--border2) ${pct}%, var(--border2) 100%)`;
         const icon = document.getElementById('volumeIcon');
-        if (icon) icon.textContent = (v == 0 || _volumeMuted) ? '∡' : (v < 40 ? '♪' : '♫');
+        if (icon) icon.textContent = (value == 0 || _volumeMuted) ? '∡' : (value < 40 ? '♪' : '♫');
     }
     function setVolume(value) {
         const v = Math.max(0, Math.min(100, parseInt(value, 10) || 0));
