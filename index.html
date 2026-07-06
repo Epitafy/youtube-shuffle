@@ -2528,17 +2528,71 @@
     tag.src = "https://www.youtube.com/iframe_api";
     document.head.appendChild(tag);
 
-    // Приложение — для прослушивания, поэтому просим у YouTube минимальное
-    // качество: декодирование видео в высоком разрешении — главный источник
-    // нагрузки на CPU и памяти у длинных сессий.
+    // Приложение — для прослушивания, поэтому ограничиваем качество видео до ~480p:
+    // декодирование в высоком разрешении — главный источник нагрузки на CPU и памяти.
+    // setPlaybackQuality YouTube давно игнорирует, поэтому реально работает только
+    // ограничение ФИЗИЧЕСКОГО размера iframe: логика выбора качества крутится ВНУТРИ
+    // iframe и меряет собственный viewport. Держим iframe маленьким (высота ≤480px по
+    // внутреннему размеру) и растягиваем его CSS-трансформом на весь контейнер —
+    // видео визуально во весь экран, но YouTube отдаёт низкое разрешение.
+    const RES_CAP_H = 480;
+    function getPlayerIframe() {
+        try { if (player && typeof player.getIframe === 'function') return player.getIframe(); } catch (e) {}
+        return document.querySelector('#video-container iframe');
+    }
+    function applyResCap() {
+        const iframe = getPlayerIframe();
+        const container = document.getElementById('video-container');
+        if (!iframe || !container) return;
+        const cw = container.clientWidth, ch = container.clientHeight;
+        if (!cw || !ch) return;
+        if (ch <= RES_CAP_H) { // и так небольшой — отдаём как есть
+            iframe.style.transform = '';
+            iframe.style.width = '100%'; iframe.style.height = '100%';
+            iframe.style.position = ''; iframe.style.top = ''; iframe.style.left = '';
+            return;
+        }
+        const scale = ch / RES_CAP_H;             // единый масштаб → без искажений
+        const capW = Math.round(cw / scale);      // тот же аспект, что у контейнера
+        iframe.style.position = 'absolute';
+        iframe.style.top = '0'; iframe.style.left = '0';
+        iframe.style.transformOrigin = 'top left';
+        iframe.style.width = capW + 'px';
+        iframe.style.height = RES_CAP_H + 'px';
+        iframe.style.transform = `scale(${scale})`;
+    }
     function forceLowQuality() {
+        applyResCap();
+        // Доп. best-effort (на части видео ещё срабатывает).
         try {
-            if (player && typeof player.setPlaybackQuality === 'function') player.setPlaybackQuality('small');
-            if (player && typeof player.setPlaybackQualityRange === 'function') player.setPlaybackQualityRange('tiny', 'small');
+            if (player && typeof player.setPlaybackQualityRange === 'function') player.setPlaybackQualityRange('medium', 'large');
+            if (player && typeof player.setPlaybackQuality === 'function') player.setPlaybackQuality('large');
         } catch (e) {}
     }
 
-    function onYouTubeIframeAPIReady() {
+    // ── Пересоздание плеера в долгих сессиях (вариант B) ────────────────────
+    // iframe YouTube за марафон копит память (наблюдали 2+ ГБ). Раз в N минут
+    // пересоздаём его в естественной паузе между треками — память сбрасывается,
+    // возврат из фона перестаёт «будить» тяжёлую вкладку.
+    const PLAYER_REFRESH_MS = 90 * 60 * 1000; // 90 минут
+    let _playerCreatedAt = Date.now();
+    let _refreshingPlayer = false;
+
+    // После destroy() iframe удаляется — возвращаем div-заглушку на место
+    // (перед empty-overlay, чтобы плеер остался под оверлеями).
+    function mountPlaceholder() {
+        let ph = document.getElementById('video-placeholder');
+        if (ph) return ph;
+        ph = document.createElement('div');
+        ph.id = 'video-placeholder';
+        const container = document.getElementById('video-container');
+        const empty = document.getElementById('empty-overlay');
+        container.insertBefore(ph, empty || null);
+        return ph;
+    }
+
+    function createPlayer(onReadyExtra) {
+        mountPlaceholder();
         player = new YT.Player('video-placeholder', {
             playerVars: {
                 playsinline: 1,
@@ -2549,14 +2603,15 @@
             },
             events: {
                 'onReady': () => {
+                    _playerCreatedAt = Date.now();
                     try { applyStoredVolume(); } catch(e) {}
                     forceLowQuality();
-                    try { restoreLastSession(); } catch(e) {}
+                    if (onReadyExtra) { try { onReadyExtra(); } catch(e) {} }
                 },
                 'onPlaybackQualityChange': () => { forceLowQuality(); },
                 'onStateChange': (e) => {
                     if (e.data === YT.PlayerState.ENDED) handleVideoEnd();
-                    if (e.data === YT.PlayerState.PLAYING) { _consecutiveErrors = 0; forceLowQuality(); } // трек ожил — сбрасываем счётчик, держим низкое качество
+                    if (e.data === YT.PlayerState.PLAYING) { _consecutiveErrors = 0; forceLowQuality(); } // трек ожил — сбрасываем счётчик, держим 480p
                     // Vinyl spins only when actually playing
                     setVinylSpin(e.data === YT.PlayerState.PLAYING);
                     // Broadcast play/pause в лобби (с текущим временем)
@@ -2585,6 +2640,25 @@
                 }
             }
         });
+    }
+
+    // Возвращает true, если пересоздание запущено и оно само проиграет nextIndex.
+    function maybeRefreshPlayer(nextIndex) {
+        if (_refreshingPlayer) return false;
+        if (Date.now() - _playerCreatedAt < PLAYER_REFRESH_MS) return false;
+        if (nextIndex < 0 || nextIndex >= currentQueue.length) return false;
+        _refreshingPlayer = true;
+        try { if (player && typeof player.destroy === 'function') player.destroy(); } catch (e) {}
+        player = null;
+        createPlayer(() => {
+            _refreshingPlayer = false;
+            playVideo(nextIndex);
+        });
+        return true;
+    }
+
+    function onYouTubeIframeAPIReady() {
+        createPlayer(() => { try { restoreLastSession(); } catch(e) {} });
         loadFavorites();
         wireLogoInteractions();
         // Первоначальная отрисовка ползунка громкости (пока player ещё не onReady)
@@ -2597,6 +2671,7 @@
         // Под мобильную ширину сжимаем placeholder URL-инпута (длинный текст не влезает в одну строку с кнопками)
         applyResponsivePlaceholder();
         window.addEventListener('resize', applyResponsivePlaceholder);
+        window.addEventListener('resize', applyResCap);
     }
 
     function applyResponsivePlaceholder() {
@@ -2609,8 +2684,13 @@
     }
 
     function handleVideoEnd() {
-        if (repeatMode === 2) playVideo(currentIndex);
-        else nextVideo();
+        if (repeatMode === 2) { playVideo(currentIndex); return; }
+        // Стык между треками — удобный момент освежить плеер в долгой сессии.
+        const next = (currentIndex < currentQueue.length - 1)
+            ? currentIndex + 1
+            : (repeatMode === 1 ? 0 : -1);
+        if (next >= 0 && maybeRefreshPlayer(next)) return;
+        nextVideo();
     }
 
     // Токен текущей загрузки плейлиста. При каждом новом вызове loadPlaylist инкрементируется,
@@ -3248,6 +3328,7 @@
         const doLoad = () => {
             _loadTimer = null;
             _lastLoadAt = Date.now();
+            if (!player || typeof player.loadVideoById !== 'function') return; // плеер пересоздаётся
             try { player.loadVideoById(id); } catch (e) {}
         };
         if (since >= LOAD_COALESCE_MS) doLoad();
