@@ -1100,6 +1100,14 @@
             color: var(--text);
             margin: 0;
         }
+        .lobby-modal h3 .lobby-build {
+            margin-left: 8px;
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
         .lobby-modal .lobby-hint {
             font-size: 12px;
             color: var(--muted);
@@ -1500,7 +1508,7 @@
     <!-- Members list modal -->
     <div id="members-modal" class="lobby-modal-backdrop" onclick="if(event.target===this)closeMembersModal()">
         <div class="lobby-modal">
-            <h3>In this lobby</h3>
+            <h3>In this lobby <span class="lobby-build">build 27</span></h3>
             <ul id="members-list" class="lobby-member-list"></ul>
             <div class="lobby-actions">
                 <button class="btn btn-ghost" onclick="closeMembersModal()">Close</button>
