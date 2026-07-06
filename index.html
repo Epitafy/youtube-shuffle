@@ -227,37 +227,35 @@
             height: 3px;
             border-radius: 2px;
             border: none;
-            background: linear-gradient(to right, var(--accent) 0%, var(--accent) 50%, var(--border2) 50%, var(--border2) 100%);
+            background: var(--border2);
             outline: none;
             cursor: pointer;
         }
         .brightness-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 11px;
-            height: 11px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
-            background: var(--text);
+            background: var(--muted);
             cursor: pointer;
             transition: background 0.15s, transform 0.15s;
-            box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
         }
         .brightness-slider:hover::-webkit-slider-thumb {
             background: var(--text);
-            transform: scale(1.25);
+            transform: scale(1.15);
         }
         .brightness-slider::-moz-range-thumb {
-            width: 11px;
-            height: 11px;
+            width: 10px;
+            height: 10px;
             border: none;
             border-radius: 50%;
-            background: var(--text);
+            background: var(--muted);
             cursor: pointer;
-            box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
         }
         .brightness-slider::-moz-range-track {
             height: 3px;
             border-radius: 2px;
-            background: linear-gradient(to right, var(--accent) 0%, var(--accent) 50%, var(--border2) 50%, var(--border2) 100%);
+            background: var(--border2);
         }
 
         /* Vertical stack: brightness on top, volume below */
@@ -3513,7 +3511,7 @@
         const safeValue = Math.max(0, Math.min(85, parseInt(value, 10) || 0));
         const pct = (safeValue / 85) * 100;
         slider.value = safeValue;
-        slider.style.background = `linear-gradient(to right, var(--accent) 0%, var(--accent) ${pct}%, var(--border2) ${pct}%, var(--border2) 100%)`;
+        slider.style.background = `linear-gradient(to right, var(--border) ${pct}%, var(--border2) ${pct}%)`;
     }
 
     // ---- VOLUME ----
@@ -3524,7 +3522,7 @@
         const value = Math.max(0, Math.min(100, parseInt(v, 10) || 0));
         const pct = value / 100 * 100;
         slider.value = value;
-        slider.style.background = `linear-gradient(to right, var(--accent) 0%, var(--accent) ${pct}%, var(--border2) ${pct}%, var(--border2) 100%)`;
+        slider.style.background = `linear-gradient(to right, var(--border) ${pct}%, var(--border2) ${pct}%)`;
         const icon = document.getElementById('volumeIcon');
         if (icon) icon.textContent = (value == 0 || _volumeMuted) ? '∡' : (value < 40 ? '♪' : '♫');
     }
