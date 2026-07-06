@@ -754,6 +754,7 @@
             display: flex;
             gap: 6px;
             margin-top: 10px;
+            position: relative;
         }
         .queue-add-input {
             flex: 1;
@@ -788,6 +789,59 @@
         .queue-add-btn:hover { background: var(--accent); color: #fff; }
         .queue-add-btn:disabled { opacity: 0.5; cursor: default; }
 
+        /* Выпадающий список результатов поиска по очереди. */
+        .queue-search-results {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            z-index: 50;
+            background: var(--surface2, #1a1a1f);
+            border: 1px solid var(--border2);
+            border-radius: 4px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            max-height: 240px;
+            overflow-y: auto;
+        }
+        .queue-search-results.hidden { display: none; }
+        .qsr-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border, rgba(255,255,255,0.05));
+        }
+        .qsr-item:last-child { border-bottom: none; }
+        .qsr-item:hover, .qsr-item.qsr-active { background: var(--accent-dim); }
+        .qsr-item img {
+            width: 40px;
+            height: 24px;
+            object-fit: cover;
+            border-radius: 3px;
+            flex-shrink: 0;
+            background: var(--bg);
+        }
+        .qsr-title {
+            font-size: 11px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex: 1;
+            min-width: 0;
+        }
+        .qsr-pos {
+            font-size: 10px;
+            color: var(--muted);
+            flex-shrink: 0;
+        }
+        .qsr-empty {
+            padding: 8px;
+            font-size: 11px;
+            color: var(--muted);
+            text-align: center;
+        }
+
         /* ── QUEUE ITEM: DRAG HANDLE + REMOVE ── */
         .drag-handle {
             flex-shrink: 0;
@@ -806,10 +860,22 @@
         .video-item:hover .drag-handle { opacity: 0.55; }
         .drag-handle:hover { opacity: 1; }
         .drag-handle:active { cursor: grabbing; }
+        /* Плавающий элемент, который едет за курсором (position: fixed задаётся из JS). */
         .video-item.dragging {
             background: var(--surface2);
-            opacity: 0.92;
-            box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+            box-shadow: 0 10px 28px rgba(0,0,0,0.55);
+            outline: 1px solid var(--accent);
+            border-radius: 6px;
+            cursor: grabbing;
+            opacity: 0.97;
+        }
+        .video-item.dragging .drag-handle { opacity: 1; cursor: grabbing; }
+        /* Пустое место, куда ляжет трек при отпускании. */
+        .drag-placeholder {
+            border: 1px dashed var(--accent);
+            border-radius: 6px;
+            background: rgba(108,99,255,0.08);
+            box-sizing: border-box;
         }
         .video-remove {
             flex-shrink: 0;
@@ -1464,9 +1530,13 @@
                     <div class="queue-label">Queue</div>
                     <div class="queue-count"><span id="video-count">0 videos</span></div>
                     <div class="queue-add">
-                        <input id="add-song-url" class="queue-add-input" placeholder="Add song by link…"
-                               onkeydown="if(event.key==='Enter')addSongToQueue()">
+                        <input id="add-song-url" class="queue-add-input" autocomplete="off"
+                               placeholder="Add by link or search queue…"
+                               oninput="onAddFieldInput()"
+                               onkeydown="onAddFieldKey(event)"
+                               onblur="hideQueueSearch(true)">
                         <button id="add-song-btn" class="queue-add-btn" title="Add to queue" onclick="addSongToQueue()">+</button>
+                        <div id="queue-search-results" class="queue-search-results hidden"></div>
                     </div>
                 </div>
                 <div id="playlist-items" class="queue-list">
@@ -2715,7 +2785,18 @@
     async function addSongToQueue() {
         const input = document.getElementById('add-song-url');
         const vid = parseVideoId(input.value);
-        if (!vid) { alert('Paste a valid YouTube video link'); return; }
+        // Не ссылка → трактуем как поиск: поднимаем первое совпадение из очереди наверх.
+        if (!vid) {
+            const matches = queueSearchMatches(input.value);
+            if (matches.length) {
+                moveTrackToTop(matches[0].index);
+                input.value = '';
+                hideQueueSearch();
+                return;
+            }
+            alert('Paste a valid YouTube link, or type text to find a track already in the queue');
+            return;
+        }
         const btn = document.getElementById('add-song-btn');
         const prev = btn.textContent;
         btn.disabled = true;
@@ -2724,10 +2805,14 @@
             const meta = await getVideoMeta(vid);
             if (meta.duration) { getDurationCache()[vid] = meta.duration; saveDurationCache(); }
             const wasEmpty = currentQueue.length === 0;
-            currentQueue.push(meta);
-            originalList.push(meta);
+            // Новый трек — в начало очереди.
+            currentQueue.unshift(meta);
+            originalList.unshift(meta);
+            // Играющий трек сдвинулся на одну позицию вниз — сохраняем подсветку.
+            if (!wasEmpty) currentIndex++;
             document.getElementById('video-count').innerText = `${currentQueue.length} videos`;
             input.value = '';
+            hideQueueSearch();
             renderList();
             broadcastQueueChange();
             if (wasEmpty) playVideo(0);
@@ -2737,6 +2822,97 @@
         } finally {
             btn.disabled = false;
             btn.textContent = prev;
+        }
+    }
+
+    // Перемещает трек из очереди на первую позицию (с сохранением подсветки играющего).
+    function moveTrackToTop(idx) {
+        if (idx <= 0 || idx >= currentQueue.length) { if (idx === 0) hideQueueSearch(); return; }
+        const [track] = currentQueue.splice(idx, 1);
+        currentQueue.unshift(track);
+        if (currentIndex === idx) currentIndex = 0;
+        else if (currentIndex < idx) currentIndex++;
+        // (currentIndex > idx остаётся прежним)
+        originalList = currentQueue.slice();
+        renderList();
+        broadcastQueueChange();
+        const cont = document.getElementById('playlist-items');
+        const first = cont && cont.querySelector('.video-item');
+        if (first) first.scrollIntoView({ block: 'center' });
+    }
+
+    // Поиск по названиям треков в текущей очереди.
+    function queueSearchMatches(query) {
+        const q = (query || '').trim().toLowerCase();
+        if (!q) return [];
+        return currentQueue
+            .map((v, index) => ({ v, index }))
+            .filter(({ v }) => (v.title || '').toLowerCase().includes(q));
+    }
+
+    let _qsrActive = -1;
+    function onAddFieldInput() {
+        const input = document.getElementById('add-song-url');
+        const val = input.value;
+        // Если это ссылка/ID — не мешаем поиском, добавление сработает по Enter/«+».
+        if (!val.trim() || parseVideoId(val)) { hideQueueSearch(); return; }
+        renderQueueSearch(queueSearchMatches(val));
+    }
+
+    function renderQueueSearch(matches) {
+        const box = document.getElementById('queue-search-results');
+        _qsrActive = matches.length ? 0 : -1;
+        if (!matches.length) {
+            box.innerHTML = '<div class="qsr-empty">No matching track in the queue</div>';
+            box.classList.remove('hidden');
+            return;
+        }
+        box.innerHTML = matches.slice(0, 40).map(({ v, index }, i) => `
+            <div class="qsr-item ${i === 0 ? 'qsr-active' : ''}" data-index="${index}"
+                 onmousedown="event.preventDefault()"
+                 onclick="pickQueueSearch(${index})">
+                <img src="${v.thumb || ''}" alt="" onerror="this.style.visibility='hidden'">
+                <span class="qsr-title">${v.title || v.id}</span>
+                <span class="qsr-pos">#${index + 1}</span>
+            </div>`).join('');
+        box.classList.remove('hidden');
+    }
+
+    function pickQueueSearch(index) {
+        const input = document.getElementById('add-song-url');
+        moveTrackToTop(index);
+        input.value = '';
+        hideQueueSearch();
+    }
+
+    function hideQueueSearch(delayed) {
+        const box = document.getElementById('queue-search-results');
+        if (!box) return;
+        const doHide = () => { box.classList.add('hidden'); box.innerHTML = ''; _qsrActive = -1; };
+        // При blur даём клику по результату успеть сработать.
+        if (delayed) setTimeout(doHide, 150); else doHide();
+    }
+
+    function onAddFieldKey(e) {
+        const box = document.getElementById('queue-search-results');
+        const open = box && !box.classList.contains('hidden');
+        const items = open ? Array.from(box.querySelectorAll('.qsr-item')) : [];
+        if (e.key === 'Enter') {
+            if (open && items.length && _qsrActive >= 0) {
+                e.preventDefault();
+                pickQueueSearch(+items[_qsrActive].dataset.index);
+            } else {
+                addSongToQueue();
+            }
+        } else if (open && items.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+            e.preventDefault();
+            _qsrActive = (e.key === 'ArrowDown')
+                ? Math.min(items.length - 1, _qsrActive + 1)
+                : Math.max(0, _qsrActive - 1);
+            items.forEach((el, i) => el.classList.toggle('qsr-active', i === _qsrActive));
+            items[_qsrActive].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Escape') {
+            hideQueueSearch();
         }
     }
 
@@ -2758,7 +2934,8 @@
         if (wasPlaying && currentQueue.length > 0) playVideo(currentIndex);
     }
 
-    // Pointer-based reordering (работает и мышью, и на тач-экране)
+    // Перетаскивание треков в очереди: элемент «поднимается» (position: fixed)
+    // и едет за курсором, а на его место встаёт плейсхолдер. Работает мышью и тачем.
     let _qDrag = null;
     function attachQueueDrag(handle, item, container) {
         if (!handle) return;
@@ -2766,40 +2943,99 @@
         handle.addEventListener('pointerdown', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            _qDrag = { item, container, pointerId: e.pointerId, handle };
-            item.classList.add('dragging');
-            try { handle.setPointerCapture(e.pointerId); } catch(_) {}
-            handle.addEventListener('pointermove', onQueueDragMove);
-            handle.addEventListener('pointerup', onQueueDragEnd);
-            handle.addEventListener('pointercancel', onQueueDragEnd);
+            startQueueDrag(e, item, container);
         });
     }
+
+    function startQueueDrag(e, item, container) {
+        const rect = item.getBoundingClientRect();
+        const placeholder = document.createElement('div');
+        placeholder.className = 'drag-placeholder';
+        placeholder.style.height = rect.height + 'px';
+        container.insertBefore(placeholder, item.nextSibling);
+
+        _qDrag = {
+            item, container, placeholder,
+            grabDX: e.clientX - rect.left,
+            grabDY: e.clientY - rect.top,
+            width: rect.width,
+            lastClientY: e.clientY,
+            rafScroll: 0,
+        };
+
+        item.classList.add('dragging');
+        item.style.position = 'fixed';
+        item.style.zIndex = '9999';
+        item.style.width = rect.width + 'px';
+        item.style.pointerEvents = 'none';
+        item.style.left = rect.left + 'px';
+        item.style.top = rect.top + 'px';
+
+        document.addEventListener('pointermove', onQueueDragMove);
+        document.addEventListener('pointerup', onQueueDragEnd);
+        document.addEventListener('pointercancel', onQueueDragEnd);
+        startEdgeAutoScroll();
+    }
+
     function onQueueDragMove(e) {
         if (!_qDrag) return;
-        const { item, container } = _qDrag;
-        const y = e.clientY;
-        const siblings = Array.from(container.querySelectorAll('.video-item:not(.dragging)'));
-        let placed = false;
-        for (const sib of siblings) {
-            const rect = sib.getBoundingClientRect();
-            if (y < rect.top + rect.height / 2) {
-                container.insertBefore(item, sib);
-                placed = true;
-                break;
-            }
-        }
-        if (!placed) container.appendChild(item);
+        e.preventDefault();
+        const d = _qDrag;
+        d.lastClientY = e.clientY;
+        d.item.style.left = (e.clientX - d.grabDX) + 'px';
+        d.item.style.top = (e.clientY - d.grabDY) + 'px';
+        repositionPlaceholder(e.clientY);
     }
+
+    function repositionPlaceholder(y) {
+        const d = _qDrag;
+        const siblings = Array.from(d.container.querySelectorAll('.video-item'))
+            .filter(el => el !== d.item);
+        let target = null;
+        for (const sib of siblings) {
+            const r = sib.getBoundingClientRect();
+            if (y < r.top + r.height / 2) { target = sib; break; }
+        }
+        if (target) d.container.insertBefore(d.placeholder, target);
+        else d.container.appendChild(d.placeholder);
+    }
+
+    // Автопрокрутка списка, когда тащишь трек к верхнему/нижнему краю.
+    function startEdgeAutoScroll() {
+        const step = () => {
+            if (!_qDrag) return;
+            const d = _qDrag;
+            const cr = d.container.getBoundingClientRect();
+            const y = d.lastClientY;
+            const zone = 48;
+            if (y < cr.top + zone) {
+                d.container.scrollTop -= Math.ceil((cr.top + zone - y) / zone * 12);
+                repositionPlaceholder(y);
+            } else if (y > cr.bottom - zone) {
+                d.container.scrollTop += Math.ceil((y - (cr.bottom - zone)) / zone * 12);
+                repositionPlaceholder(y);
+            }
+            d.rafScroll = requestAnimationFrame(step);
+        };
+        _qDrag.rafScroll = requestAnimationFrame(step);
+    }
+
     function onQueueDragEnd() {
         if (!_qDrag) return;
-        const { item, container, handle, pointerId } = _qDrag;
-        handle.removeEventListener('pointermove', onQueueDragMove);
-        handle.removeEventListener('pointerup', onQueueDragEnd);
-        handle.removeEventListener('pointercancel', onQueueDragEnd);
-        try { handle.releasePointerCapture(pointerId); } catch(_) {}
-        item.classList.remove('dragging');
-        // Новый порядок читаем по data-qindex (устойчиво к дубликатам треков)
-        const order = Array.from(container.querySelectorAll('.video-item')).map(el => +el.dataset.qindex);
+        const d = _qDrag;
+        document.removeEventListener('pointermove', onQueueDragMove);
+        document.removeEventListener('pointerup', onQueueDragEnd);
+        document.removeEventListener('pointercancel', onQueueDragEnd);
+        if (d.rafScroll) cancelAnimationFrame(d.rafScroll);
+
+        // Ставим трек на место плейсхолдера и снимаем «плавающие» стили.
+        d.container.insertBefore(d.item, d.placeholder);
+        d.placeholder.remove();
+        d.item.classList.remove('dragging');
+        d.item.style.cssText = '';
+
+        // Новый порядок читаем по data-qindex (устойчиво к дубликатам треков).
+        const order = Array.from(d.container.querySelectorAll('.video-item')).map(el => +el.dataset.qindex);
         _qDrag = null;
         const changed = order.some((v, i) => v !== i);
         if (!changed) return;
@@ -2807,7 +3043,7 @@
         const newIndex = order.indexOf(currentIndex);
         currentQueue = newQueue;
         if (newIndex >= 0) currentIndex = newIndex;
-        // Ручной порядок становится каноничным (unshuffle его не сбросит)
+        // Ручной порядок становится каноничным (unshuffle его не сбросит).
         originalList = currentQueue.slice();
         renderList();
         broadcastQueueChange();
