@@ -2322,6 +2322,8 @@
     let currentPlaylistTitle = '';
     let favorites = [];
     let repeatMode = 0;
+    let _errorAdvanceTimer = null;   // защита от каскада onError → nextVideo
+    let _consecutiveErrors = 0;
     let isShowingPlaylistName = false;
     let hoverTimeout;
     let lastSongHoverToggle = 0;
@@ -2535,6 +2537,7 @@
                 },
                 'onStateChange': (e) => {
                     if (e.data === YT.PlayerState.ENDED) handleVideoEnd();
+                    if (e.data === YT.PlayerState.PLAYING) _consecutiveErrors = 0; // трек ожил — сбрасываем счётчик
                     // Vinyl spins only when actually playing
                     setVinylSpin(e.data === YT.PlayerState.PLAYING);
                     // Broadcast play/pause в лобби (с текущим временем)
@@ -2547,8 +2550,19 @@
                     }
                 },
                 'onError': (e) => {
-                    console.error("Player error:", e.data);
-                    setTimeout(nextVideo, 2000);
+                    console.warn("Player error:", e.data);
+                    // Защита от «зависания»: битое видео может кидать onError несколько
+                    // раз подряд. Планируем максимум один переход за раз и ограничиваем
+                    // серию авто-пропусков, чтобы не улететь в бесконечный цикл.
+                    if (_errorAdvanceTimer) return;
+                    if (++_consecutiveErrors > 10) {
+                        console.warn('слишком много ошибок подряд — авто-пропуск остановлен');
+                        return;
+                    }
+                    _errorAdvanceTimer = setTimeout(() => {
+                        _errorAdvanceTimer = null;
+                        nextVideo();
+                    }, 1500);
                 }
             }
         });
@@ -2699,6 +2713,29 @@
     function scheduleSessionSave() {
         if (_sessionSaveTimer) clearTimeout(_sessionSaveTimer);
         _sessionSaveTimer = setTimeout(() => { _sessionSaveTimer = null; saveSessionQueue(); }, 800);
+    }
+    // Запись индекса тоже откладываем: при быстром переключении иначе идёт
+    // синхронная запись в localStorage на каждый клик.
+    let _indexSaveTimer = null;
+    function scheduleIndexSave() {
+        if (_indexSaveTimer) clearTimeout(_indexSaveTimer);
+        _indexSaveTimer = setTimeout(() => { _indexSaveTimer = null; saveSessionIndex(); }, 500);
+    }
+    // Рассылку «сменил трек» в лобби тоже коалесцируем: при быстром переключении
+    // уходит только финальный трек, а не десяток записей в Firebase подряд.
+    let _switchBroadcastTimer = null;
+    function scheduleSwitchBroadcast() {
+        if (_switchBroadcastTimer) clearTimeout(_switchBroadcastTimer);
+        _switchBroadcastTimer = setTimeout(() => {
+            _switchBroadcastTimer = null;
+            if (!LOBBY.ref) return;
+            lobbyBroadcast({
+                currentIndex: currentIndex,
+                playState: 'playing',
+                currentTime: 0,
+                timeAnchor: firebase.database.ServerValue.TIMESTAMP,
+            });
+        }, 300);
     }
 
     // При запуске подтягиваем последний плейлист (если не заходим в лобби).
@@ -3201,20 +3238,14 @@
     function playVideo(index) {
         if (index < 0 || index >= currentQueue.length) return;
         currentIndex = index;
-        saveSessionIndex();
+        scheduleIndexSave();
         requestVideoLoad(currentQueue[currentIndex].id);
         updateMediaSession();
         if (!isShowingPlaylistName) updateCurrentSongDisplay();
         highlightActive(currentIndex, true);
-        // Broadcast: смена трека — с currentTime=0 и play
-        if (LOBBY.ref && !LOBBY.applyingRemote) {
-            lobbyBroadcast({
-                currentIndex: currentIndex,
-                playState: 'playing',
-                currentTime: 0,
-                timeAnchor: firebase.database.ServerValue.TIMESTAMP,
-            });
-        }
+        // Broadcast: смена трека (коалесцируется при быстром переключении).
+        // Не рассылаем, если сами применяем удалённое состояние (эхо).
+        if (LOBBY.ref && !LOBBY.applyingRemote) scheduleSwitchBroadcast();
     }
 
     function nextVideo() {
@@ -3345,6 +3376,7 @@
     function startSeekPoll() {
         stopSeekPoll();
         seekPollInterval = setInterval(() => {
+            if (document.hidden) return; // в фоне обновлять UI бессмысленно
             if (!player || typeof player.getCurrentTime !== "function") return;
             try {
                 const cur = player.getCurrentTime();
@@ -3407,10 +3439,23 @@
     }
 
     // ── MEDIA SESSION API ──
+    // Обработчики регистрируем один раз, а не на каждый трек — иначе быстрое
+    // переключение создаёт лишнюю нагрузку.
+    let _mediaHandlersReady = false;
+    function initMediaSessionHandlers() {
+        if (_mediaHandlersReady || !('mediaSession' in navigator)) return;
+        _mediaHandlersReady = true;
+        navigator.mediaSession.setActionHandler('play', () => { try { player.playVideo(); } catch(e) {} navigator.mediaSession.playbackState = 'playing'; });
+        navigator.mediaSession.setActionHandler('pause', () => { try { player.pauseVideo(); } catch(e) {} navigator.mediaSession.playbackState = 'paused'; });
+        navigator.mediaSession.setActionHandler('previoustrack', () => { prevVideo(); });
+        navigator.mediaSession.setActionHandler('nexttrack', () => { nextVideo(); });
+        navigator.mediaSession.setActionHandler('seekto', (details) => { try { player.seekTo(details.seekTime, true); } catch(e) {} });
+    }
     function updateMediaSession() {
         if (!('mediaSession' in navigator)) return;
         const video = currentQueue[currentIndex];
         if (!video) return;
+        initMediaSessionHandlers();
         const audio = document.getElementById('silentAudio');
         if (audio && audio.paused) { audio.volume = 0; audio.play().catch(() => {}); }
         navigator.mediaSession.metadata = new MediaMetadata({
@@ -3418,11 +3463,6 @@
             artist: 'YouTube Playlist',
             artwork: [{ src: video.thumb, sizes: '512x512', type: 'image/jpeg' }]
         });
-        navigator.mediaSession.setActionHandler('play', () => { try { player.playVideo(); } catch(e) {} navigator.mediaSession.playbackState = 'playing'; });
-        navigator.mediaSession.setActionHandler('pause', () => { try { player.pauseVideo(); } catch(e) {} navigator.mediaSession.playbackState = 'paused'; });
-        navigator.mediaSession.setActionHandler('previoustrack', () => { prevVideo(); });
-        navigator.mediaSession.setActionHandler('nexttrack', () => { nextVideo(); });
-        navigator.mediaSession.setActionHandler('seekto', (details) => { try { player.seekTo(details.seekTime, true); } catch(e) {} });
         navigator.mediaSession.playbackState = 'playing';
     }
 
@@ -3432,6 +3472,16 @@
     }
     document.addEventListener('visibilitychange', syncAnimPaused);
     syncAnimPaused();
+
+    // При закрытии/уходе страницы досохраняем отложенные записи сессии,
+    // чтобы дебаунс не «съел» последний трек/очередь.
+    window.addEventListener('pagehide', () => {
+        try {
+            if (_sessionSaveTimer) { clearTimeout(_sessionSaveTimer); _sessionSaveTimer = null; saveSessionQueue(); }
+            if (_indexSaveTimer) { clearTimeout(_indexSaveTimer); _indexSaveTimer = null; }
+            saveSessionIndex();
+        } catch (e) {}
+    });
 
 </script>
 </body>
