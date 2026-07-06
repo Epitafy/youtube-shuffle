@@ -185,9 +185,14 @@
             background: #0a0a0c;
             opacity: 0;
             display: none;
+            visibility: hidden;
             pointer-events: none;
             transition: opacity 0.15s ease;
             z-index: 10;
+        }
+        .dimmer-overlay.active {
+            display: block;
+            visibility: visible;
         }
 
         /* ── BRIGHTNESS SLIDER ── */
@@ -252,6 +257,7 @@
             inset: 0;
             z-index: 11;
             display: none;
+            visibility: hidden;
             flex-direction: column;
             align-items: center;
             justify-content: center;
@@ -260,6 +266,7 @@
         }
         .blackout-content.visible {
             display: flex;
+            visibility: visible;
             pointer-events: auto;
             animation: blackoutFadeIn 0.5s ease forwards;
         }
@@ -300,9 +307,22 @@
         .vinyl-wrap:active {
             transform: scale(0.93);
         }
+        /* Тени статичны на .vinyl; вращение и градиент — на ::before (GPU-слой).
+           Chromium не пересчитывает box-shadow на каждый кадр вращения. */
         .vinyl {
             width: 88px;
             height: 88px;
+            border-radius: 50%;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 0 1px rgba(108,99,255,0.08),
+                        0 0 24px rgba(108,99,255,0.12),
+                        0 0 60px rgba(108,99,255,0.06);
+        }
+        .vinyl::before {
+            content: '';
+            position: absolute;
+            inset: 0;
             border-radius: 50%;
             background: conic-gradient(
                 #1a1a22 0deg, #0f0f14 30deg, #1a1a22 60deg,
@@ -312,24 +332,8 @@
             );
             animation: vinylSpin 8s linear infinite;
             animation-play-state: paused;
-            box-shadow: 0 0 0 1px rgba(108,99,255,0.08),
-                        0 0 24px rgba(108,99,255,0.12),
-                        0 0 60px rgba(108,99,255,0.06);
-        }
-        .vinyl::before {
-            content: '';
-            position: absolute;
-            inset: 28px;
-            border-radius: 50%;
-            background: #0a0a0c;
-            box-shadow: inset 0 0 8px rgba(108,99,255,0.15);
-        }
-        .vinyl::after {
-            content: '';
-            position: absolute;
-            inset: 38px;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(108,99,255,0.4) 0%, rgba(108,99,255,0.05) 100%);
+            will-change: transform;
+            transform: translateZ(0);
         }
         .vinyl-grooves {
             position: absolute;
@@ -341,14 +345,32 @@
             );
             animation: vinylSpin 8s linear infinite;
             animation-play-state: paused;
+            will-change: transform;
+            transform: translateZ(0);
+            pointer-events: none;
+        }
+        .vinyl-grooves::before {
+            content: '';
+            position: absolute;
+            inset: 28px;
+            border-radius: 50%;
+            background: #0a0a0c;
+            box-shadow: inset 0 0 8px rgba(108,99,255,0.15);
+        }
+        .vinyl-grooves::after {
+            content: '';
+            position: absolute;
+            inset: 38px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(108,99,255,0.4) 0%, rgba(108,99,255,0.05) 100%);
         }
         @keyframes vinylSpin {
-            from { transform: rotate(0deg); }
-            to   { transform: rotate(360deg); }
+            from { transform: translateZ(0) rotate(0deg); }
+            to   { transform: translateZ(0) rotate(360deg); }
         }
 
-        /* vinyl spins only when playing */
-        .vinyl-playing .vinyl,
+        /* vinyl spins only when playing AND blackout UI is visible */
+        .vinyl-playing .vinyl::before,
         .vinyl-playing .vinyl-grooves {
             animation-play-state: running;
         }
@@ -491,7 +513,15 @@
         }
         header { position: relative; }
 
-        /* \u041a\u043e\u0433\u0434\u0430 \u0432\u043a\u043b\u0430\u0434\u043a\u0430/\u043e\u043a\u043d\u043e \u043d\u0435 \u0432 \u0444\u043e\u043a\u0443\u0441\u0435 \u2014 \u0433\u043b\u0443\u0448\u0438\u043c \u0432\u0441\u0435 CSS-\u0430\u043d\u0438\u043c\u0430\u0446\u0438\u0438,\n           \u0447\u0442\u043e\u0431\u044b \u0440\u0435\u043d\u0434\u0435\u0440\u0435\u0440 \u043d\u0435 \u0442\u0440\u0430\u0442\u0438\u043b CPU \u0432 \u0444\u043e\u043d\u0435 (\u0432\u0438\u043d\u0438\u043b, \u0441\u043f\u0438\u043d\u043d\u0435\u0440, lobby-pulse \u0438 \u0442.\u0434.). */\n        body.anim-paused *,\n        body.anim-paused *::before,\n        body.anim-paused *::after {\n            animation-play-state: paused !important;\n        }\n\n        /* Sidebar active item ambient glow */
+        /* Когда вкладка/окно не в фокусе — глушим все CSS-анимации,
+           чтобы рендерер не тратил CPU в фоне (винил, спиннер, lobby-pulse и т.д.). */
+        body.anim-paused *,
+        body.anim-paused *::before,
+        body.anim-paused *::after {
+            animation-play-state: paused !important;
+        }
+
+        /* Sidebar active item ambient glow */
         .video-item.active {
             box-shadow: inset 0 0 20px rgba(108,99,255,0.05);
         }
@@ -3373,7 +3403,7 @@
         const blackoutEl = document.getElementById("blackoutContent");
         if (isBlackedOut) {
             const ov = document.getElementById("dimmerOverlay");
-            ov.style.display = "block";
+            ov.classList.add("active");
             ov.style.opacity = "1";
             icon.style.color = "var(--accent)";
             icon.title = "Restore video";
@@ -3381,6 +3411,8 @@
             const titleEl = document.getElementById("current-song-title");
             document.getElementById("blackoutTitle").textContent = titleEl ? titleEl.textContent : "—";
             startSeekPoll();
+            refreshVinylAnimation();
+            syncParticleLoop();
         } else {
             const slider = document.getElementById("brightnessSlider");
             setDim(slider.value);
@@ -3388,6 +3420,8 @@
             icon.title = "Toggle blackout";
             blackoutEl.classList.remove("visible");
             stopSeekPoll();
+            refreshVinylAnimation();
+            syncParticleLoop();
         }
     }
 
@@ -3397,11 +3431,11 @@
         // Держим слой в дереве отрисовки только когда реально затемняем — иначе
         // он мешает Edge отдать видео в аппаратный оверлей.
         if (Number(value) > 0) {
-            overlay.style.display = "block";
+            overlay.classList.add("active");
             overlay.style.opacity = (value / 100).toFixed(2);
         } else {
             overlay.style.opacity = "0";
-            overlay.style.display = "none";
+            overlay.classList.remove("active");
         }
         const slider = document.getElementById("brightnessSlider");
         const pct = (value / 85) * 100;
@@ -3505,11 +3539,55 @@
     }
 
     // ── VINYL SPIN CONTROL ──
-    function setVinylSpin(playing) {
+    let _vinylPlayerPlaying = false;
+
+    function isBlackoutUiVisible() {
+        return isBlackedOut || document.getElementById('blackoutContent')?.classList.contains('visible');
+    }
+
+    function shouldAnimateVinyl() {
+        return _vinylPlayerPlaying && isBlackoutUiVisible() && !document.hidden;
+    }
+
+    function refreshVinylAnimation() {
         const vinylWrap = document.querySelector('.vinyl-wrap');
         if (!vinylWrap) return;
-        if (playing) vinylWrap.classList.add('vinyl-playing');
-        else vinylWrap.classList.remove('vinyl-playing');
+        vinylWrap.classList.toggle('vinyl-playing', shouldAnimateVinyl());
+    }
+
+    function setVinylSpin(playing) {
+        _vinylPlayerPlaying = !!playing;
+        refreshVinylAnimation();
+    }
+
+    // ── PARTICLE CANVAS (останавливаем RAF, когда экран скрыт) ──
+    let _particleRaf = 0;
+
+    function shouldRunParticles() {
+        const canvas = document.getElementById('particleCanvas');
+        return !!canvas && isBlackoutUiVisible() && !document.hidden;
+    }
+
+    function stopParticleLoop() {
+        if (_particleRaf) {
+            cancelAnimationFrame(_particleRaf);
+            _particleRaf = 0;
+        }
+    }
+
+    /** Вызывать из цикла отрисовки частиц; вернёт false, если пора остановиться. */
+    function particleLoopTick(drawFn) {
+        if (!shouldRunParticles()) {
+            stopParticleLoop();
+            return false;
+        }
+        if (typeof drawFn === 'function') drawFn();
+        _particleRaf = requestAnimationFrame(() => particleLoopTick(drawFn));
+        return true;
+    }
+
+    function syncParticleLoop() {
+        if (!shouldRunParticles()) stopParticleLoop();
     }
 
     // Click on vinyl = toggle play/pause
@@ -3549,9 +3627,11 @@
         navigator.mediaSession.playbackState = 'playing';
     }
 
-    // Пауза всех CSS-анимаций когда вкладка/окно уходит в фон — экономит CPU.
+    // Пауза всех CSS-анимаций и RAF-циклов когда вкладка/окно уходит в фон.
     function syncAnimPaused() {
         document.body.classList.toggle('anim-paused', document.hidden);
+        refreshVinylAnimation();
+        syncParticleLoop();
     }
     document.addEventListener('visibilitychange', syncAnimPaused);
     syncAnimPaused();
