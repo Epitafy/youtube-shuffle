@@ -176,11 +176,15 @@
         }
 
         /* ── DIMMER OVERLAY ── */
+        /* display:none по умолчанию — критично: пока над видео нет ни одного
+           перекрывающего слоя, Edge/Chromium отдаёт видео в аппаратный оверлей
+           (низкий CPU). Слой включаем только когда реально затемняем. */
         .dimmer-overlay {
             position: absolute;
             inset: 0;
             background: #0a0a0c;
             opacity: 0;
+            display: none;
             pointer-events: none;
             transition: opacity 0.15s ease;
             z-index: 10;
@@ -2528,42 +2532,12 @@
     tag.src = "https://www.youtube.com/iframe_api";
     document.head.appendChild(tag);
 
-    // Приложение — для прослушивания, поэтому ограничиваем качество видео до ~480p:
-    // декодирование в высоком разрешении — главный источник нагрузки на CPU и памяти.
-    // setPlaybackQuality YouTube давно игнорирует, поэтому реально работает только
-    // ограничение ФИЗИЧЕСКОГО размера iframe: логика выбора качества крутится ВНУТРИ
-    // iframe и меряет собственный viewport. Держим iframe маленьким (высота ≤480px по
-    // внутреннему размеру) и растягиваем его CSS-трансформом на весь контейнер —
-    // видео визуально во весь экран, но YouTube отдаёт низкое разрешение.
-    const RES_CAP_H = 480;
-    function getPlayerIframe() {
-        try { if (player && typeof player.getIframe === 'function') return player.getIframe(); } catch (e) {}
-        return document.querySelector('#video-container iframe');
-    }
-    function applyResCap() {
-        const iframe = getPlayerIframe();
-        const container = document.getElementById('video-container');
-        if (!iframe || !container) return;
-        const cw = container.clientWidth, ch = container.clientHeight;
-        if (!cw || !ch) return;
-        if (ch <= RES_CAP_H) { // и так небольшой — отдаём как есть
-            iframe.style.transform = '';
-            iframe.style.width = '100%'; iframe.style.height = '100%';
-            iframe.style.position = ''; iframe.style.top = ''; iframe.style.left = '';
-            return;
-        }
-        const scale = ch / RES_CAP_H;             // единый масштаб → без искажений
-        const capW = Math.round(cw / scale);      // тот же аспект, что у контейнера
-        iframe.style.position = 'absolute';
-        iframe.style.top = '0'; iframe.style.left = '0';
-        iframe.style.transformOrigin = 'top left';
-        iframe.style.width = capW + 'px';
-        iframe.style.height = RES_CAP_H + 'px';
-        iframe.style.transform = `scale(${scale})`;
-    }
+    // ВАЖНО для Edge/Chromium: чтобы видео шло через аппаратный оверлей (низкий CPU),
+    // на самом iframe не должно быть CSS-трансформов, а над ним — перекрывающих слоёв.
+    // Прошлый приём с масштабированием iframe до 480p ломал оверлей и не давал выигрыша
+    // по CPU, поэтому убран. Запрос низкого качества оставляем best-effort (YouTube его
+    // часто игнорирует, но вреда нет).
     function forceLowQuality() {
-        applyResCap();
-        // Доп. best-effort (на части видео ещё срабатывает).
         try {
             if (player && typeof player.setPlaybackQualityRange === 'function') player.setPlaybackQualityRange('medium', 'large');
             if (player && typeof player.setPlaybackQuality === 'function') player.setPlaybackQuality('large');
@@ -2671,7 +2645,6 @@
         // Под мобильную ширину сжимаем placeholder URL-инпута (длинный текст не влезает в одну строку с кнопками)
         applyResponsivePlaceholder();
         window.addEventListener('resize', applyResponsivePlaceholder);
-        window.addEventListener('resize', applyResCap);
     }
 
     function applyResponsivePlaceholder() {
@@ -3399,7 +3372,9 @@
         const icon = document.getElementById("brightnessIcon");
         const blackoutEl = document.getElementById("blackoutContent");
         if (isBlackedOut) {
-            document.getElementById("dimmerOverlay").style.opacity = "1";
+            const ov = document.getElementById("dimmerOverlay");
+            ov.style.display = "block";
+            ov.style.opacity = "1";
             icon.style.color = "var(--accent)";
             icon.title = "Restore video";
             blackoutEl.classList.add("visible");
@@ -3419,7 +3394,15 @@
     function setDim(value) {
         if (isBlackedOut) return;
         const overlay = document.getElementById("dimmerOverlay");
-        overlay.style.opacity = (value / 100).toFixed(2);
+        // Держим слой в дереве отрисовки только когда реально затемняем — иначе
+        // он мешает Edge отдать видео в аппаратный оверлей.
+        if (Number(value) > 0) {
+            overlay.style.display = "block";
+            overlay.style.opacity = (value / 100).toFixed(2);
+        } else {
+            overlay.style.opacity = "0";
+            overlay.style.display = "none";
+        }
         const slider = document.getElementById("brightnessSlider");
         const pct = (value / 85) * 100;
         slider.style.background = `linear-gradient(to right, var(--border) ${pct}%, var(--border2) ${pct}%)`;
