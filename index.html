@@ -217,7 +217,9 @@
             text-align: center;
             line-height: 1;
         }
-        .brightness-slider {
+        /* Shared style for both sliders — single source of truth so they can never drift apart */
+        .brightness-slider,
+        .volume-slider {
             -webkit-appearance: none;
             appearance: none;
             width: 68px;
@@ -231,7 +233,8 @@
             outline: none;
             cursor: pointer;
         }
-        .brightness-slider::-webkit-slider-thumb {
+        .brightness-slider::-webkit-slider-thumb,
+        .volume-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
             width: 10px;
             height: 10px;
@@ -240,11 +243,13 @@
             cursor: pointer;
             transition: background 0.15s, transform 0.15s;
         }
-        .brightness-slider:hover::-webkit-slider-thumb {
+        .brightness-slider:hover::-webkit-slider-thumb,
+        .volume-slider:hover::-webkit-slider-thumb {
             background: var(--text);
             transform: scale(1.15);
         }
-        .brightness-slider::-moz-range-thumb {
+        .brightness-slider::-moz-range-thumb,
+        .volume-slider::-moz-range-thumb {
             width: 10px;
             height: 10px;
             border: none;
@@ -252,49 +257,8 @@
             background: var(--muted);
             cursor: pointer;
         }
-        .brightness-slider::-moz-range-track {
-            height: 3px;
-            border-radius: 2px;
-            background: var(--border2);
-        }
-
-        /* Volume slider — same as brightness */
-        #volumeSlider {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 68px;
-            min-width: 68px;
-            max-width: 68px;
-            flex: 0 0 68px;
-            height: 3px;
-            border-radius: 2px;
-            border: none;
-            background: var(--border2);
-            outline: none;
-            cursor: pointer;
-        }
-        #volumeSlider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: var(--muted);
-            cursor: pointer;
-            transition: background 0.15s, transform 0.15s;
-        }
-        #volumeSlider:hover::-webkit-slider-thumb {
-            background: var(--text);
-            transform: scale(1.15);
-        }
-        #volumeSlider::-moz-range-thumb {
-            width: 10px;
-            height: 10px;
-            border: none;
-            border-radius: 50%;
-            background: var(--muted);
-            cursor: pointer;
-        }
-        #volumeSlider::-moz-range-track {
+        .brightness-slider::-moz-range-track,
+        .volume-slider::-moz-range-track {
             height: 3px;
             border-radius: 2px;
             background: var(--border2);
@@ -1411,7 +1375,8 @@
                 justify-content: space-between;
             }
             .controls-stack .brightness-wrap { flex: 1; }
-            .controls-stack .brightness-slider { flex: 1; width: auto; }
+            .controls-stack .brightness-slider,
+            .controls-stack .volume-slider { flex: 1; width: auto; }
 
             .queue-pane {
                 /* Очередь растягивается на всю оставшуюся высоту main, поэтому свободного
@@ -1624,7 +1589,7 @@
                     </div>
                     <div class="brightness-wrap">
                         <span class="brightness-icon" id="volumeIcon" onclick="toggleMute()" style="cursor:pointer;user-select:none" title="Mute / unmute">♫</span>
-                        <input type="range" class="brightness-slider" id="volumeSlider" min="0" max="100" value="100" oninput="setVolume(this.value)" title="Volume">
+                        <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="100" oninput="setVolume(this.value)" title="Volume">
                     </div>
                 </div>
             </div>
