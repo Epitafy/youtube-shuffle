@@ -820,10 +820,13 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 18px;
+            padding: 0;
             line-height: 1;
-            display: inline-flex;
+            display: flex;
             align-items: center;
             justify-content: center;
+            font-family: 'DM Mono', monospace;
+            font-weight: 700;
             transition: background 0.15s, color 0.15s;
         }
         .queue-add-btn:hover { background: var(--accent); color: #fff; }
@@ -1508,7 +1511,7 @@
     <!-- Members list modal -->
     <div id="members-modal" class="lobby-modal-backdrop" onclick="if(event.target===this)closeMembersModal()">
         <div class="lobby-modal">
-            <h3>In this lobby <span class="lobby-build">build 27</span></h3>
+            <h3>In this lobby <span class="lobby-build" id="lobby-build-version"></span></h3>
             <ul id="members-list" class="lobby-member-list"></ul>
             <div class="lobby-actions">
                 <button class="btn btn-ghost" onclick="closeMembersModal()">Close</button>
@@ -1620,6 +1623,9 @@
 
 <script>
     // --- CONFIG ---
+    // Version/build number (update when making changes).
+    // Format: 1.27, 1.28, ... (increment the minor number for releases).
+    const BUILD_VERSION = '1.28';
     const API_KEY = 'AIzaSyBaIt7mKZFhneA4vpnTGGrj091rPc0KvCE';
 
     // --- FIREBASE / LOBBY CONFIG ---
@@ -1665,6 +1671,12 @@
         lastState: null,         // last remote snapshot we applied
         suppressNextStateChange: false,
     };
+
+    // Inject build version into lobby UI.
+    try {
+        const buildEl = document.getElementById('lobby-build-version');
+        if (buildEl) buildEl.textContent = `build ${BUILD_VERSION}`;
+    } catch (e) {}
 
     // Watch server time offset for accurate seek sync
     if (_fbDb) {
