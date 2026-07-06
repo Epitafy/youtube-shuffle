@@ -1488,7 +1488,7 @@
     <!-- Lobby modal -->
     <div id="lobby-modal" class="lobby-modal-backdrop" onclick="if(event.target===this)closeLobbyModal()">
         <div class="lobby-modal">
-            <h3>Listen together</h3>
+            <h3>Listen together <span class="lobby-build" id="lobby-entry-build-version"></span></h3>
             <div class="lobby-row">
                 <input type="text" id="lobby-name-input" class="lobby-input lobby-name" placeholder="Your name" maxlength="20">
             </div>
@@ -1623,7 +1623,7 @@
     // --- CONFIG ---
     // Version/build number (update when making changes).
     // Format: 1.27, 1.28, ... (increment the minor number for releases).
-    const BUILD_VERSION = '1.29';
+    const BUILD_VERSION = '1.30';
     const API_KEY = 'AIzaSyBaIt7mKZFhneA4vpnTGGrj091rPc0KvCE';
 
     // --- FIREBASE / LOBBY CONFIG ---
@@ -1672,8 +1672,13 @@
 
     // Inject build version into lobby UI.
     try {
-        const buildEl = document.getElementById('lobby-build-version');
-        if (buildEl) buildEl.textContent = `build ${BUILD_VERSION}`;
+        const buildEls = [
+            document.getElementById('lobby-build-version'),
+            document.getElementById('lobby-entry-build-version'),
+        ];
+        buildEls.forEach(buildEl => {
+            if (buildEl) buildEl.textContent = `build ${BUILD_VERSION}`;
+        });
     } catch (e) {}
 
     // Watch server time offset for accurate seek sync
@@ -2410,6 +2415,18 @@
         }, 150);
     }
 
+    function getCurrentSongTitleText() {
+        if (currentQueue.length === 0) return 'No songs';
+        const currentSong = currentQueue[currentIndex];
+        return (currentSong && currentSong.title) ? currentSong.title : '—';
+    }
+
+    function syncBlackoutTitle() {
+        const titleEl = document.getElementById('blackoutTitle');
+        if (!titleEl) return;
+        titleEl.textContent = getCurrentSongTitleText();
+    }
+
     // Показать название плейлиста
     function showPlaylistName() {
         if (!currentPlaylistTitle) return; // Если плейлиста нет, ничего не делаем
@@ -2440,28 +2457,29 @@
                 titleEl.textContent = 'No songs';
                 titleEl.title = '';
             } else {
-                const currentSong = currentQueue[currentIndex];
-                titleEl.textContent = currentSong.title;
-                titleEl.title = currentSong.title;
+                const currentSongTitle = getCurrentSongTitleText();
+                titleEl.textContent = currentSongTitle;
+                titleEl.title = currentSongTitle;
             }
             titleEl.classList.remove('fade-out');
             titleEl.classList.add('fade-in');
         }, 150);
+        syncBlackoutTitle();
     }
 
     // Обновление дисплея при переключении треков
     function updateCurrentSongDisplay() {
+        syncBlackoutTitle();
         if (isShowingPlaylistName) return;
-        
         const titleEl = document.getElementById('current-song-title');
         
         if (currentQueue.length === 0) {
             titleEl.textContent = 'No songs';
             titleEl.title = '';
         } else {
-            const currentSong = currentQueue[currentIndex];
-            titleEl.textContent = currentSong.title;
-            titleEl.title = currentSong.title;
+            const currentSongTitle = getCurrentSongTitleText();
+            titleEl.textContent = currentSongTitle;
+            titleEl.title = currentSongTitle;
         }
     }
 
@@ -2986,7 +3004,7 @@
         window.addEventListener('resize', () => { if (_sizer) renderWindow(); });
     }
 
-    function renderList() {
+    function renderList(centerCurrent) {
         const container = document.getElementById('playlist-items');
         updateEmptyOverlay();
         scheduleSessionSave();
@@ -3003,8 +3021,9 @@
         container.innerHTML = `<div id="pl-sizer" style="position:relative;height:${currentQueue.length * ROW_H}px"></div>`;
         _sizer = document.getElementById('pl-sizer');
         setupListDelegation(container);
-        // Центрируем текущий трек и рисуем окно вокруг него.
-        highlightActive(currentIndex, true);
+        // Центрируем текущий трек только когда это действительно нужно
+        // (например, при реальной смене playing-трека).
+        highlightActive(currentIndex, !!centerCurrent);
     }
 
     // ── ADD / REMOVE / REORDER QUEUE (синхронно с лобби) ──
@@ -3437,8 +3456,7 @@
             icon.style.color = "var(--accent)";
             icon.title = "Restore video";
             blackoutEl.classList.add("visible");
-            const titleEl = document.getElementById("current-song-title");
-            document.getElementById("blackoutTitle").textContent = titleEl ? titleEl.textContent : "—";
+            syncBlackoutTitle();
             startSeekPoll();
             refreshVinylAnimation();
             syncParticleLoop();
@@ -3534,8 +3552,7 @@
                     seekEl.style.background = `linear-gradient(to right, rgba(255,255,255,0.35) ${pct}%, rgba(255,255,255,0.08) ${pct}%)`;
                     document.getElementById("blackoutTime").textContent = formatTime(cur) + " / " + formatTime(dur);
                 }
-                const titleEl = document.getElementById("current-song-title");
-                if (titleEl) document.getElementById("blackoutTitle").textContent = titleEl.textContent;
+                syncBlackoutTitle();
             } catch(e) {}
         }, 1000);
     }
