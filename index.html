@@ -427,9 +427,9 @@
             box-shadow: 0 0 8px var(--accent), 0 0 20px var(--accent-glow);
         }
 
-        /* Logo pulse glow */
+        /* Logo glow (статичное, без бесконечной анимации text-shadow — она грузила CPU постоянной перерисовкой) */
         .logo {
-            animation: logoPulse 4s ease-in-out infinite;
+            text-shadow: 0 0 12px rgba(108,99,255,0.45);
             cursor: pointer;
             user-select: none;
             transition: transform 0.12s ease;
@@ -475,27 +475,19 @@
             cursor: grabbing;
             transition: none;
         }
-        @keyframes logoPulse {
-            0%, 100% { text-shadow: 0 0 8px rgba(108,99,255,0.3); }
-            50%       { text-shadow: 0 0 18px rgba(108,99,255,0.7), 0 0 40px rgba(108,99,255,0.2); }
-        }
-
-        /* accent line under header */
+        /* accent line under header (статичная полоска — бесконечная headerGlow убрана,
+           она держала рендерер в постоянной перерисовке) */
         header::after {
             content: '';
             position: absolute;
             bottom: 0; left: 0; right: 0;
             height: 1px;
             background: linear-gradient(90deg, transparent, var(--accent-glow), transparent);
-            animation: headerGlow 6s ease-in-out infinite;
+            opacity: 0.7;
         }
         header { position: relative; }
-        @keyframes headerGlow {
-            0%, 100% { opacity: 0.3; }
-            50%       { opacity: 1; }
-        }
 
-        /* Sidebar active item ambient glow */
+        /* \u041a\u043e\u0433\u0434\u0430 \u0432\u043a\u043b\u0430\u0434\u043a\u0430/\u043e\u043a\u043d\u043e \u043d\u0435 \u0432 \u0444\u043e\u043a\u0443\u0441\u0435 \u2014 \u0433\u043b\u0443\u0448\u0438\u043c \u0432\u0441\u0435 CSS-\u0430\u043d\u0438\u043c\u0430\u0446\u0438\u0438,\n           \u0447\u0442\u043e\u0431\u044b \u0440\u0435\u043d\u0434\u0435\u0440\u0435\u0440 \u043d\u0435 \u0442\u0440\u0430\u0442\u0438\u043b CPU \u0432 \u0444\u043e\u043d\u0435 (\u0432\u0438\u043d\u0438\u043b, \u0441\u043f\u0438\u043d\u043d\u0435\u0440, lobby-pulse \u0438 \u0442.\u0434.). */\n        body.anim-paused *,\n        body.anim-paused *::before,\n        body.anim-paused *::after {\n            animation-play-state: paused !important;\n        }\n\n        /* Sidebar active item ambient glow */
         .video-item.active {
             box-shadow: inset 0 0 20px rgba(108,99,255,0.05);
         }
@@ -512,6 +504,44 @@
             font-size: 12px;
         }
         .placeholder-icon { font-size: 40px; opacity: 0.3; }
+
+        /* ── EMPTY STATE OVERLAY (когда плейлист не загружен) ──
+           Отдельный слой поверх области плеера: сам #video-placeholder
+           заменяется на <iframe> при инициализации YT, поэтому заглушку
+           держим отдельным элементом. */
+        .empty-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 12;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 24px;
+            background: radial-gradient(ellipse at center, #16161c 0%, #0a0a0c 75%);
+            pointer-events: none;
+        }
+        .empty-overlay.hidden { display: none; }
+        .empty-overlay-inner { max-width: 420px; }
+        .empty-overlay-icon {
+            font-size: 54px;
+            color: var(--accent);
+            opacity: 0.5;
+            margin-bottom: 14px;
+        }
+        .empty-overlay-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+        .empty-overlay-hint {
+            font-family: 'DM Mono', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            color: var(--muted);
+        }
 
         .controls {
             display: flex;
@@ -717,6 +747,92 @@
             font-size: 10px;
             color: var(--muted);
             margin-top: 4px;
+        }
+
+        /* ── ADD SONG TO QUEUE ── */
+        .queue-add {
+            display: flex;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .queue-add-input {
+            flex: 1;
+            min-width: 0;
+            height: 30px;
+            background: var(--bg);
+            border: 1px solid var(--border2);
+            border-radius: 4px;
+            color: var(--text);
+            padding: 0 10px;
+            font-size: 11px;
+            font-family: 'DM Mono', monospace;
+        }
+        .queue-add-input:focus { outline: none; border-color: var(--accent); }
+        .queue-add-input::placeholder { color: var(--muted); }
+        .queue-add-btn {
+            flex-shrink: 0;
+            width: 30px;
+            height: 30px;
+            border: 1px solid var(--accent);
+            background: var(--accent-dim);
+            color: var(--accent);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, color 0.15s;
+        }
+        .queue-add-btn:hover { background: var(--accent); color: #fff; }
+        .queue-add-btn:disabled { opacity: 0.5; cursor: default; }
+
+        /* ── QUEUE ITEM: DRAG HANDLE + REMOVE ── */
+        .drag-handle {
+            flex-shrink: 0;
+            width: 16px;
+            color: var(--muted);
+            cursor: grab;
+            font-size: 14px;
+            line-height: 1;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.15s;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .video-item:hover .drag-handle { opacity: 0.55; }
+        .drag-handle:hover { opacity: 1; }
+        .drag-handle:active { cursor: grabbing; }
+        .video-item.dragging {
+            background: var(--surface2);
+            opacity: 0.92;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+        }
+        .video-remove {
+            flex-shrink: 0;
+            width: 22px;
+            height: 22px;
+            border: none;
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 12px;
+            border-radius: 4px;
+            opacity: 0;
+            transition: opacity 0.15s, background 0.15s, color 0.15s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .video-item:hover .video-remove { opacity: 0.65; }
+        .video-remove:hover { opacity: 1; background: rgba(255,79,79,0.15); color: var(--danger); }
+        /* На тач-устройствах hover нет — показываем хват и крестик всегда */
+        @media (hover: none), (max-width: 768px) {
+            .drag-handle { opacity: 0.5; }
+            .video-remove { opacity: 0.55; }
         }
 
         .playlist-item {
@@ -1036,7 +1152,10 @@
            Страница скроллится целиком — пытаться запихать всё в 100vh
            на мобиле бессмысленно (адресная строка + жесты сворачивают
            реальную высоту). */
-        @media (max-width: 768px) {
+        /* Стековая раскладка включается либо на узком экране (≤768px),
+           либо когда окно портретное/квадратное (высота ≥ ширины) —
+           это ловит окно, растянутое на пол-экрана. */
+        @media (max-width: 768px), (max-aspect-ratio: 1/1) {
             html, body { overflow-y: auto; }
             /* Скрываем визуально вертикальный скроллбар страницы (прокрутка работает свайпом / колесом).
                Нужно при сжатом окне на ПК и при мобильной верстке, чтобы не было лишней полосы справа. */
@@ -1300,10 +1419,12 @@
                         </div>
                     </div>
                 </div>
-                <div id="video-placeholder">
-                    <div class="placeholder">
-                        <div class="placeholder-icon">◈</div>
-                        <div>Load playlist to start</div>
+                <div id="video-placeholder"></div>
+                <div id="empty-overlay" class="empty-overlay">
+                    <div class="empty-overlay-inner">
+                        <div class="empty-overlay-icon">◈</div>
+                        <div class="empty-overlay-title">No playlist loaded</div>
+                        <div class="empty-overlay-hint">Paste a YouTube playlist link above and press Load,<br>or add a single song from the queue panel.</div>
                     </div>
                 </div>
             </div>
@@ -1342,6 +1463,11 @@
                 <div class="queue-header">
                     <div class="queue-label">Queue</div>
                     <div class="queue-count"><span id="video-count">0 videos</span></div>
+                    <div class="queue-add">
+                        <input id="add-song-url" class="queue-add-input" placeholder="Add song by link…"
+                               onkeydown="if(event.key==='Enter')addSongToQueue()">
+                        <button id="add-song-btn" class="queue-add-btn" title="Add to queue" onclick="addSongToQueue()">+</button>
+                    </div>
                 </div>
                 <div id="playlist-items" class="queue-list">
                     <div class="state-empty">
@@ -1689,10 +1815,14 @@
                 try { fetchMissingDurations(currentQueue); } catch(e) {}
                 try { updateStarButton(); } catch(e) {}
             } else if (queueChanged && state.queue) {
-                // Shuffle/unshuffle happened
+                // Shuffle / unshuffle / add / remove / reorder — очередь изменилась
                 currentQueue = toArr(state.queue);
                 if (state.originalList) originalList = toArr(state.originalList);
+                if (typeof state.currentIndex === 'number') currentIndex = state.currentIndex;
+                document.getElementById('video-count').innerText = `${currentQueue.length} videos`;
+                try { applyCachedDurations(currentQueue); } catch(e) {}
                 renderList();
+                try { fetchMissingDurations(currentQueue); } catch(e) {}
             }
 
             // 2. Force-load видео по фактическому ID, а не по индексу.
@@ -1714,9 +1844,10 @@
                 } else if (targetIndex !== currentIndex) {
                     // Видео то же, но индекс разъехался — обновим подсветку в списке.
                     currentIndex = targetIndex;
+                    saveSessionIndex();
                     document.querySelectorAll('.video-item').forEach(el => el.classList.remove('active'));
                     const a = document.getElementById(`v-${currentIndex}`);
-                    if (a) { a.classList.add('active'); a.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+                    if (a) { a.classList.add('active'); a.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
                 }
             }
 
@@ -2316,7 +2447,10 @@
     function onYouTubeIframeAPIReady() {
         player = new YT.Player('video-placeholder', {
             events: {
-                'onReady': () => { try { applyStoredVolume(); } catch(e) {} },
+                'onReady': () => {
+                    try { applyStoredVolume(); } catch(e) {}
+                    try { restoreLastSession(); } catch(e) {}
+                },
                 'onStateChange': (e) => {
                     if (e.data === YT.PlayerState.ENDED) handleVideoEnd();
                     // Vinyl spins only when actually playing
@@ -2353,7 +2487,8 @@
     function applyResponsivePlaceholder() {
         const inp = document.getElementById('playlist-url');
         if (!inp) return;
-        inp.placeholder = (window.innerWidth <= 768)
+        const stacked = window.innerWidth <= 768 || window.innerHeight >= window.innerWidth;
+        inp.placeholder = stacked
             ? 'Playlist link…'
             : 'Paste YouTube playlist link...';
     }
@@ -2454,32 +2589,234 @@
         }
     }
 
+    // ── EMPTY STATE + SESSION PERSISTENCE ──
+    function updateEmptyOverlay() {
+        const ov = document.getElementById('empty-overlay');
+        if (ov) ov.classList.toggle('hidden', currentQueue.length > 0);
+    }
+
+    const SESSION_QUEUE_KEY = 'shuffleLastQueue';
+    const SESSION_INDEX_KEY = 'shuffleLastIndex';
+    function saveSessionQueue() {
+        try {
+            if (!currentQueue.length) { localStorage.removeItem(SESSION_QUEUE_KEY); return; }
+            localStorage.setItem(SESSION_QUEUE_KEY, JSON.stringify({
+                url: currentPlaylistUrl || '',
+                title: currentPlaylistTitle || '',
+                queue: currentQueue,
+                originalList: originalList,
+            }));
+        } catch (e) { /* localStorage переполнен — не критично */ }
+    }
+    function saveSessionIndex() {
+        try { localStorage.setItem(SESSION_INDEX_KEY, String(currentIndex)); } catch (e) {}
+    }
+
+    // При запуске подтягиваем последний плейлист (если не заходим в лобби).
+    function restoreLastSession() {
+        if (LOBBY.ref) return;
+        let snap;
+        try { snap = JSON.parse(localStorage.getItem(SESSION_QUEUE_KEY) || 'null'); } catch (e) { return; }
+        if (!snap || !Array.isArray(snap.queue) || !snap.queue.length) return;
+        currentPlaylistUrl = snap.url || '';
+        currentPlaylistTitle = snap.title || '';
+        originalList = (Array.isArray(snap.originalList) && snap.originalList.length) ? snap.originalList : snap.queue.slice();
+        currentQueue = snap.queue;
+        let idx = parseInt(localStorage.getItem(SESSION_INDEX_KEY) || '0', 10);
+        if (isNaN(idx) || idx < 0 || idx >= currentQueue.length) idx = 0;
+        currentIndex = idx;
+        if (currentPlaylistUrl) document.getElementById('playlist-url').value = currentPlaylistUrl;
+        document.getElementById('video-count').innerText = `${currentQueue.length} videos`;
+        try { applyCachedDurations(currentQueue); } catch (e) {}
+        renderList();
+        try { updateStarButton(); } catch (e) {}
+        try { updateCurrentSongDisplay(); } catch (e) {}
+        // Готовим последний трек (cue — без автоплея, его всё равно заблокирует политика браузера до жеста).
+        try { player.cueVideoById(currentQueue[currentIndex].id); } catch (e) {}
+        try { fetchMissingDurations(currentQueue); } catch (e) {}
+    }
+
     function renderList() {
         const container = document.getElementById('playlist-items');
+        updateEmptyOverlay();
+        saveSessionQueue();
         container.innerHTML = '';
+        if (!currentQueue.length) {
+            container.innerHTML = `
+                <div class="state-empty">
+                    <div class="state-empty-icon">☰</div>
+                    <div>Queue is empty</div>
+                </div>`;
+            return;
+        }
         const fragment = document.createDocumentFragment();
         currentQueue.forEach((video, index) => {
             const div = document.createElement('div');
             div.className = `video-item ${index === currentIndex ? 'active' : ''}`;
             div.id = `v-${index}`;
+            div.dataset.qindex = index;
             div.onclick = () => playVideo(index);
             div.innerHTML = `
+                <span class="drag-handle" title="Drag to reorder">⠿</span>
                 <img src="${video.thumb}" loading="lazy">
                 <div class="video-item-info">
                     <div class="video-title">${video.title}</div>
                     <div class="video-meta"><span class="video-duration" data-vid="${video.id}">${video.duration || '—:—'}</span></div>
                 </div>
+                <button class="video-remove" title="Remove from queue">✕</button>
             `;
+            const removeBtn = div.querySelector('.video-remove');
+            removeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeFromQueue(index); });
+            attachQueueDrag(div.querySelector('.drag-handle'), div, container);
             fragment.appendChild(div);
         });
         container.appendChild(fragment);
         const activeElem = document.getElementById(`v-${currentIndex}`);
-        if (activeElem) activeElem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (activeElem) activeElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // ── ADD / REMOVE / REORDER QUEUE (синхронно с лобби) ──
+    function parseVideoId(url) {
+        if (!url) return null;
+        url = url.trim();
+        if (/^[A-Za-z0-9_-]{11}$/.test(url)) return url;
+        let m = url.match(/[?&]v=([A-Za-z0-9_-]{11})/);
+        if (m) return m[1];
+        m = url.match(/youtu\.be\/([A-Za-z0-9_-]{11})/);
+        if (m) return m[1];
+        m = url.match(/\/(?:embed|shorts|live|v)\/([A-Za-z0-9_-]{11})/);
+        if (m) return m[1];
+        return null;
+    }
+
+    async function getVideoMeta(id) {
+        const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${id}&key=${API_KEY}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.error) throw new Error(data.error.message);
+        const it = (data.items || [])[0];
+        if (!it) throw new Error('Video not found or unavailable');
+        const s = it.snippet;
+        const thumb = s.thumbnails?.medium?.url || s.thumbnails?.default?.url || 'https://via.placeholder.com/120x68?text=No+Thumb';
+        const duration = formatISODuration(it.contentDetails && it.contentDetails.duration) || '';
+        return { id, title: s.title, thumb, duration };
+    }
+
+    function broadcastQueueChange() {
+        if (LOBBY.ref && !LOBBY.applyingRemote) {
+            lobbyBroadcast({
+                queue: currentQueue.slice(),
+                originalList: originalList.slice(),
+                currentIndex: currentIndex,
+            });
+        }
+    }
+
+    async function addSongToQueue() {
+        const input = document.getElementById('add-song-url');
+        const vid = parseVideoId(input.value);
+        if (!vid) { alert('Paste a valid YouTube video link'); return; }
+        const btn = document.getElementById('add-song-btn');
+        const prev = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '…';
+        try {
+            const meta = await getVideoMeta(vid);
+            if (meta.duration) { getDurationCache()[vid] = meta.duration; saveDurationCache(); }
+            const wasEmpty = currentQueue.length === 0;
+            currentQueue.push(meta);
+            originalList.push(meta);
+            document.getElementById('video-count').innerText = `${currentQueue.length} videos`;
+            input.value = '';
+            renderList();
+            broadcastQueueChange();
+            if (wasEmpty) playVideo(0);
+        } catch (e) {
+            console.warn('addSong failed:', e);
+            alert('Could not add song: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = prev;
+        }
+    }
+
+    function removeFromQueue(index) {
+        if (index < 0 || index >= currentQueue.length) return;
+        const removed = currentQueue[index];
+        const wasPlaying = index === currentIndex;
+        currentQueue.splice(index, 1);
+        const oi = originalList.findIndex(v => v.id === removed.id);
+        if (oi >= 0) originalList.splice(oi, 1);
+        if (index < currentIndex) {
+            currentIndex--;
+        } else if (index === currentIndex) {
+            currentIndex = currentQueue.length ? Math.min(currentIndex, currentQueue.length - 1) : 0;
+        }
+        document.getElementById('video-count').innerText = `${currentQueue.length} videos`;
+        renderList();
+        broadcastQueueChange();
+        if (wasPlaying && currentQueue.length > 0) playVideo(currentIndex);
+    }
+
+    // Pointer-based reordering (работает и мышью, и на тач-экране)
+    let _qDrag = null;
+    function attachQueueDrag(handle, item, container) {
+        if (!handle) return;
+        handle.addEventListener('click', (e) => e.stopPropagation());
+        handle.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            _qDrag = { item, container, pointerId: e.pointerId, handle };
+            item.classList.add('dragging');
+            try { handle.setPointerCapture(e.pointerId); } catch(_) {}
+            handle.addEventListener('pointermove', onQueueDragMove);
+            handle.addEventListener('pointerup', onQueueDragEnd);
+            handle.addEventListener('pointercancel', onQueueDragEnd);
+        });
+    }
+    function onQueueDragMove(e) {
+        if (!_qDrag) return;
+        const { item, container } = _qDrag;
+        const y = e.clientY;
+        const siblings = Array.from(container.querySelectorAll('.video-item:not(.dragging)'));
+        let placed = false;
+        for (const sib of siblings) {
+            const rect = sib.getBoundingClientRect();
+            if (y < rect.top + rect.height / 2) {
+                container.insertBefore(item, sib);
+                placed = true;
+                break;
+            }
+        }
+        if (!placed) container.appendChild(item);
+    }
+    function onQueueDragEnd() {
+        if (!_qDrag) return;
+        const { item, container, handle, pointerId } = _qDrag;
+        handle.removeEventListener('pointermove', onQueueDragMove);
+        handle.removeEventListener('pointerup', onQueueDragEnd);
+        handle.removeEventListener('pointercancel', onQueueDragEnd);
+        try { handle.releasePointerCapture(pointerId); } catch(_) {}
+        item.classList.remove('dragging');
+        // Новый порядок читаем по data-qindex (устойчиво к дубликатам треков)
+        const order = Array.from(container.querySelectorAll('.video-item')).map(el => +el.dataset.qindex);
+        _qDrag = null;
+        const changed = order.some((v, i) => v !== i);
+        if (!changed) return;
+        const newQueue = order.map(i => currentQueue[i]).filter(Boolean);
+        const newIndex = order.indexOf(currentIndex);
+        currentQueue = newQueue;
+        if (newIndex >= 0) currentIndex = newIndex;
+        // Ручной порядок становится каноничным (unshuffle его не сбросит)
+        originalList = currentQueue.slice();
+        renderList();
+        broadcastQueueChange();
     }
 
     function playVideo(index) {
         if (index < 0 || index >= currentQueue.length) return;
         currentIndex = index;
+        saveSessionIndex();
         player.loadVideoById(currentQueue[currentIndex].id);
         updateMediaSession();
         if (!isShowingPlaylistName) updateCurrentSongDisplay();
@@ -2487,7 +2824,7 @@
         const activeElem = document.getElementById(`v-${currentIndex}`);
         if (activeElem) {
             activeElem.classList.add('active');
-            activeElem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            activeElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
         // Broadcast: смена трека — с currentTime=0 и play
         if (LOBBY.ref && !LOBBY.applyingRemote) {
@@ -2708,6 +3045,13 @@
         navigator.mediaSession.setActionHandler('seekto', (details) => { try { player.seekTo(details.seekTime, true); } catch(e) {} });
         navigator.mediaSession.playbackState = 'playing';
     }
+
+    // Пауза всех CSS-анимаций когда вкладка/окно уходит в фон — экономит CPU.
+    function syncAnimPaused() {
+        document.body.classList.toggle('anim-paused', document.hidden);
+    }
+    document.addEventListener('visibilitychange', syncAnimPaused);
+    syncAnimPaused();
 
 </script>
 </body>
