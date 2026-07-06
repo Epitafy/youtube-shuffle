@@ -258,6 +258,48 @@
             background: var(--border2);
         }
 
+        /* Volume slider — same as brightness */
+        #volumeSlider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 68px;
+            min-width: 68px;
+            max-width: 68px;
+            flex: 0 0 68px;
+            height: 3px;
+            border-radius: 2px;
+            border: none;
+            background: var(--border2);
+            outline: none;
+            cursor: pointer;
+        }
+        #volumeSlider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--muted);
+            cursor: pointer;
+            transition: background 0.15s, transform 0.15s;
+        }
+        #volumeSlider:hover::-webkit-slider-thumb {
+            background: var(--text);
+            transform: scale(1.15);
+        }
+        #volumeSlider::-moz-range-thumb {
+            width: 10px;
+            height: 10px;
+            border: none;
+            border-radius: 50%;
+            background: var(--muted);
+            cursor: pointer;
+        }
+        #volumeSlider::-moz-range-track {
+            height: 3px;
+            border-radius: 2px;
+            background: var(--border2);
+        }
+
         /* Vertical stack: brightness on top, volume below */
         .controls-stack {
             display: flex;
