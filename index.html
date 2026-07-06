@@ -2528,16 +2528,35 @@
     tag.src = "https://www.youtube.com/iframe_api";
     document.head.appendChild(tag);
 
+    // Приложение — для прослушивания, поэтому просим у YouTube минимальное
+    // качество: декодирование видео в высоком разрешении — главный источник
+    // нагрузки на CPU и памяти у длинных сессий.
+    function forceLowQuality() {
+        try {
+            if (player && typeof player.setPlaybackQuality === 'function') player.setPlaybackQuality('small');
+            if (player && typeof player.setPlaybackQualityRange === 'function') player.setPlaybackQualityRange('tiny', 'small');
+        } catch (e) {}
+    }
+
     function onYouTubeIframeAPIReady() {
         player = new YT.Player('video-placeholder', {
+            playerVars: {
+                playsinline: 1,
+                modestbranding: 1,
+                rel: 0,
+                iv_load_policy: 3,   // без аннотаций
+                fs: 0,
+            },
             events: {
                 'onReady': () => {
                     try { applyStoredVolume(); } catch(e) {}
+                    forceLowQuality();
                     try { restoreLastSession(); } catch(e) {}
                 },
+                'onPlaybackQualityChange': () => { forceLowQuality(); },
                 'onStateChange': (e) => {
                     if (e.data === YT.PlayerState.ENDED) handleVideoEnd();
-                    if (e.data === YT.PlayerState.PLAYING) _consecutiveErrors = 0; // трек ожил — сбрасываем счётчик
+                    if (e.data === YT.PlayerState.PLAYING) { _consecutiveErrors = 0; forceLowQuality(); } // трек ожил — сбрасываем счётчик, держим низкое качество
                     // Vinyl spins only when actually playing
                     setVinylSpin(e.data === YT.PlayerState.PLAYING);
                     // Broadcast play/pause в лобби (с текущим временем)
