@@ -131,7 +131,7 @@
 
         .btn-ghost {
             background: var(--surface2);
-            color: var(--text);
+            color: var(--muted);
             border: 1px solid var(--border2);
         }
         .btn-ghost:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
@@ -217,8 +217,48 @@
             text-align: center;
             line-height: 1;
         }
-        /* Shared style for both sliders — single source of truth so they can never drift apart */
-        .brightness-slider,
+        .brightness-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 68px;
+            min-width: 68px;
+            max-width: 68px;
+            flex: 0 0 68px;
+            height: 3px;
+            border-radius: 2px;
+            border: none;
+            background: var(--border2);
+            outline: none;
+            cursor: pointer;
+        }
+        .brightness-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--muted);
+            cursor: pointer;
+            transition: background 0.15s, transform 0.15s;
+        }
+        .brightness-slider:hover::-webkit-slider-thumb {
+            background: var(--text);
+            transform: scale(1.15);
+        }
+        .brightness-slider::-moz-range-thumb {
+            width: 10px;
+            height: 10px;
+            border: none;
+            border-radius: 50%;
+            background: var(--muted);
+            cursor: pointer;
+        }
+        .brightness-slider::-moz-range-track {
+            height: 3px;
+            border-radius: 2px;
+            background: var(--border2);
+        }
+
+        /* Volume slider — identical to brightness */
         .volume-slider {
             -webkit-appearance: none;
             appearance: none;
@@ -233,14 +273,6 @@
             outline: none;
             cursor: pointer;
         }
-        .brightness-slider::-webkit-slider-runnable-track,
-        .volume-slider::-webkit-slider-runnable-track {
-            -webkit-appearance: none;
-            height: 3px;
-            border-radius: 2px;
-            background: transparent;
-        }
-        .brightness-slider::-webkit-slider-thumb,
         .volume-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
             width: 10px;
@@ -250,12 +282,10 @@
             cursor: pointer;
             transition: background 0.15s, transform 0.15s;
         }
-        .brightness-slider:hover::-webkit-slider-thumb,
         .volume-slider:hover::-webkit-slider-thumb {
             background: var(--text);
             transform: scale(1.15);
         }
-        .brightness-slider::-moz-range-thumb,
         .volume-slider::-moz-range-thumb {
             width: 10px;
             height: 10px;
@@ -264,8 +294,49 @@
             background: var(--muted);
             cursor: pointer;
         }
-        .brightness-slider::-moz-range-track,
         .volume-slider::-moz-range-track {
+            height: 3px;
+            border-radius: 2px;
+            background: var(--border2);
+        }
+
+        /* Volume slider — same as brightness */
+        #volumeSlider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 68px;
+            min-width: 68px;
+            max-width: 68px;
+            flex: 0 0 68px;
+            height: 3px;
+            border-radius: 2px;
+            border: none;
+            background: var(--border2);
+            outline: none;
+            cursor: pointer;
+        }
+        #volumeSlider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--muted);
+            cursor: pointer;
+            transition: background 0.15s, transform 0.15s;
+        }
+        #volumeSlider:hover::-webkit-slider-thumb {
+            background: var(--text);
+            transform: scale(1.15);
+        }
+        #volumeSlider::-moz-range-thumb {
+            width: 10px;
+            height: 10px;
+            border: none;
+            border-radius: 50%;
+            background: var(--muted);
+            cursor: pointer;
+        }
+        #volumeSlider::-moz-range-track {
             height: 3px;
             border-radius: 2px;
             background: var(--border2);
@@ -634,7 +705,7 @@
             padding: 0 12px;
             min-width: 0;
             max-width: 100%;
-            cursor: pointer;
+            cursor: default;
             position: relative;
         }
 
@@ -1382,8 +1453,7 @@
                 justify-content: space-between;
             }
             .controls-stack .brightness-wrap { flex: 1; }
-            .controls-stack .brightness-slider,
-            .controls-stack .volume-slider { flex: 1; width: auto; }
+            .controls-stack .brightness-slider { flex: 1; width: auto; }
 
             .queue-pane {
                 /* Очередь растягивается на всю оставшуюся высоту main, поэтому свободного
@@ -1478,6 +1548,109 @@
                 font-size: 14px;
             }
         }
+
+        /* ============================================================
+           UI REDESIGN — minimalist, borderless controls
+           Same palette (--accent #6c63ff etc.), flat states via fill
+           instead of outlines, and normalized rendering so the app
+           looks identical in Chrome / Firefox / Safari / Edge.
+           ============================================================ */
+
+        /* Cross-browser text & tap-highlight consistency */
+        html, body {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Firefox scrollbars to match the thin webkit ones already in use */
+        .queue-list, .lobby-member-list, .queue-search-results {
+            scrollbar-width: thin;
+            scrollbar-color: var(--border2) transparent;
+        }
+
+        /* Normalize native control chrome so every browser starts identical */
+        button, input, textarea, select {
+            -webkit-appearance: none;
+            appearance: none;
+            font-family: inherit;
+            outline: none;
+        }
+
+        /* ── Inputs: flat fill, no border, soft accent ring on focus ── */
+        .url-input,
+        .queue-add-input,
+        .lobby-modal .lobby-input {
+            border: none;
+            background: var(--surface2);
+            box-shadow: inset 0 0 0 1px transparent;
+            transition: box-shadow 0.15s ease, background 0.15s ease;
+        }
+        .url-input:focus,
+        .queue-add-input:focus,
+        .lobby-modal .lobby-input:focus {
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1.5px var(--accent);
+        }
+        .url-input:-webkit-autofill,
+        .url-input:-webkit-autofill:hover,
+        .url-input:-webkit-autofill:focus,
+        .url-input:-webkit-autofill:active {
+            -webkit-box-shadow: 0 0 0 1000px var(--surface2) inset !important;
+        }
+
+        /* ── Buttons: no outlines, state communicated by fill only ── */
+        .btn-ghost, .btn-danger, .btn-star, .btn-repeat,
+        .lobby-btn, .tab-btn, .playlist-item, .queue-add-btn {
+            border: none !important;
+        }
+
+        .btn-ghost { background: var(--surface2); }
+        .btn-ghost:hover { background: var(--accent-dim); color: var(--accent); }
+
+        .btn-danger { background: transparent; }
+        .btn-danger:hover { background: rgba(255,79,79,0.12); color: var(--danger); }
+
+        .btn-star { background: var(--surface2); }
+        .btn-star:hover, .btn-star.active { background: rgba(255,193,7,0.12); color: #ffc107; }
+
+        .btn-repeat { background: transparent; }
+        .btn-repeat:hover, .btn-repeat.active { background: var(--accent-dim); color: var(--accent); }
+        .btn-repeat.one { background: rgba(61,255,160,0.12); color: var(--success); }
+
+        .lobby-btn { background: var(--surface2); }
+        .lobby-btn:hover { background: var(--accent-dim); color: var(--accent); }
+        .lobby-btn.active { background: rgba(61,255,160,0.12); color: var(--success); }
+
+        .tab-btn { background: transparent; }
+        .tab-btn.active { background: var(--accent-dim); color: var(--accent); }
+
+        /* Transport row (prev/next/shuffle) — flat like repeat/unshuffle, no idle fill */
+        .controls .btn-ghost { background: transparent; }
+        .controls .btn-ghost:hover { background: var(--accent-dim); color: var(--accent); }
+
+        .queue-add-btn { background: var(--accent-dim); color: var(--accent); }
+        .queue-add-btn:hover { background: var(--accent); color: #fff; }
+
+        .playlist-item { background: var(--surface2); }
+        .playlist-item:hover { background: var(--surface); box-shadow: inset 0 0 0 1px var(--accent-dim); }
+
+        .delete-btn { border: none; }
+
+        /* Softer active-track indicator (fill only, no glow ring) */
+        .video-item.active::before { box-shadow: none; }
+
+        /* Remove the thin accent line running along the top of the player */
+        header::after { display: none; }
+
+        /* Accessible focus ring, replacing the removed native outline */
+        button:focus-visible,
+        input:focus-visible,
+        [tabindex]:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
     </style>
 </head>
 <body>
@@ -1502,7 +1675,7 @@
     <header>
         <div class="logo" id="logo" title="Click — random GIF • Hold — clear all">▶ SHUFFLE</div>
         <div class="url-bar">
-            <input type="text" id="playlist-url" class="url-input" placeholder="Paste YouTube playlist link...">
+            <input type="text" id="playlist-url" class="url-input" placeholder="Paste YouTube playlist link..." onkeydown="if (event.key === 'Enter') { event.preventDefault(); loadPlaylist(); }">
             <div class="spinner" id="spinner"></div>
             <button id="load-btn" class="btn btn-primary" onclick="loadPlaylist()">Load</button>
             <button id="star-btn" class="btn btn-star" onclick="toggleFavorite()" title="Add to favorites">★</button>
@@ -1978,7 +2151,7 @@
                 currentPlaylistTitle = state.playlistTitle || '';
                 originalList = toArr(state.originalList);
                 currentQueue = toArr(state.queue);
-                document.getElementById('playlist-url').value = state.playlistUrl;
+                refreshUrlInputDisplay();
                 document.getElementById('video-count').innerText = `${currentQueue.length} videos`;
                 repeatMode = state.repeatMode || 0;
                 try { updateRepeatButton(); } catch(e) {}
@@ -2412,10 +2585,6 @@
     let repeatMode = 0;
     let _errorAdvanceTimer = null;   // защита от каскада onError → nextVideo
     let _consecutiveErrors = 0;
-    let isShowingPlaylistName = false;
-    let hoverTimeout;
-    let lastSongHoverToggle = 0;
-    const SONG_HOVER_COOLDOWN_MS = 800;
     let leaveTimeout;
     let lastMouseY = 0;
     let horizontalTolerance = 0;
@@ -2432,24 +2601,12 @@
         localStorage.setItem('shuffleFavorites', JSON.stringify(favorites));
     }
 
-    // Логика переключения (Toggle) при наведении + кулдаун чтобы не прыгало от любого движения мыши
-    function handleSongMouseEnter(e) {
-        clearTimeout(hoverTimeout);
-        const sinceLast = Date.now() - lastSongHoverToggle;
-        if (sinceLast < SONG_HOVER_COOLDOWN_MS) return;
-        hoverTimeout = setTimeout(() => {
-            // Ещё раз проверяем после задержки — вдруг был быстрый повторный вход
-            if (Date.now() - lastSongHoverToggle < SONG_HOVER_COOLDOWN_MS) return;
-            lastSongHoverToggle = Date.now();
-            if (isShowingPlaylistName) showSongName();
-            else showPlaylistName();
-        }, 150);
-    }
-
+    // Текст под плеером — всегда "название трека — автор", без переключения по наведению.
     function getCurrentSongTitleText() {
         if (currentQueue.length === 0) return 'No songs';
         const currentSong = currentQueue[currentIndex];
-        return (currentSong && currentSong.title) ? currentSong.title : '—';
+        if (!currentSong || !currentSong.title) return '—';
+        return currentSong.author ? `${currentSong.title} — ${currentSong.author}` : currentSong.title;
     }
 
     function syncBlackoutTitle() {
@@ -2458,60 +2615,13 @@
         titleEl.textContent = getCurrentSongTitleText();
     }
 
-    // Показать название плейлиста
-    function showPlaylistName() {
-        if (!currentPlaylistTitle) return; // Если плейлиста нет, ничего не делаем
-        isShowingPlaylistName = true;
-        
-        const titleEl = document.getElementById('current-song-title');
-        titleEl.classList.remove('fade-in');
-        titleEl.classList.add('fade-out');
-        
-        setTimeout(() => {
-            titleEl.textContent = currentPlaylistTitle;
-            titleEl.title = currentPlaylistTitle;
-            titleEl.classList.remove('fade-out');
-            titleEl.classList.add('fade-in');
-        }, 150);
-    }
-
-    // Показать название песни
-    function showSongName() {
-        isShowingPlaylistName = false;
-        
-        const titleEl = document.getElementById('current-song-title');
-        titleEl.classList.remove('fade-in');
-        titleEl.classList.add('fade-out');
-        
-        setTimeout(() => {
-            if (currentQueue.length === 0) {
-                titleEl.textContent = 'No songs';
-                titleEl.title = '';
-            } else {
-                const currentSongTitle = getCurrentSongTitleText();
-                titleEl.textContent = currentSongTitle;
-                titleEl.title = currentSongTitle;
-            }
-            titleEl.classList.remove('fade-out');
-            titleEl.classList.add('fade-in');
-        }, 150);
-        syncBlackoutTitle();
-    }
-
     // Обновление дисплея при переключении треков
     function updateCurrentSongDisplay() {
         syncBlackoutTitle();
-        if (isShowingPlaylistName) return;
         const titleEl = document.getElementById('current-song-title');
-        
-        if (currentQueue.length === 0) {
-            titleEl.textContent = 'No songs';
-            titleEl.title = '';
-        } else {
-            const currentSongTitle = getCurrentSongTitleText();
-            titleEl.textContent = currentSongTitle;
-            titleEl.title = currentSongTitle;
-        }
+        const currentSongTitle = getCurrentSongTitleText();
+        titleEl.textContent = currentSongTitle;
+        titleEl.title = currentSongTitle;
     }
 
     function toggleRepeat() {
@@ -2747,11 +2857,28 @@
             const stored = parseInt(localStorage.getItem('shuffleVolume') || '100', 10);
             _paintVolumeSlider(isNaN(stored) ? 100 : Math.max(0, Math.min(100, stored)));
         } catch(e) {}
-        const songElement = document.getElementById('current-song');
-        songElement.addEventListener('mouseenter', handleSongMouseEnter);
         // Под мобильную ширину сжимаем placeholder URL-инпута (длинный текст не влезает в одну строку с кнопками)
         applyResponsivePlaceholder();
         window.addEventListener('resize', applyResponsivePlaceholder);
+        wireUrlInputDisplay();
+    }
+
+    // ── URL-инпут: показываем название плейлиста, пока поле не в фокусе
+    //    и мышь не наведена на него; ссылку показываем только при наведении/клике ──
+    let _urlInputHovering = false;
+    function refreshUrlInputDisplay() {
+        const inp = document.getElementById('playlist-url');
+        if (!inp) return;
+        const active = document.activeElement === inp || _urlInputHovering;
+        inp.value = active ? (currentPlaylistUrl || '') : (currentPlaylistTitle || currentPlaylistUrl || '');
+    }
+    function wireUrlInputDisplay() {
+        const inp = document.getElementById('playlist-url');
+        if (!inp) return;
+        inp.addEventListener('mouseenter', () => { _urlInputHovering = true; refreshUrlInputDisplay(); });
+        inp.addEventListener('mouseleave', () => { _urlInputHovering = false; refreshUrlInputDisplay(); });
+        inp.addEventListener('focus', () => { refreshUrlInputDisplay(); inp.select(); });
+        inp.addEventListener('blur', () => { refreshUrlInputDisplay(); });
     }
 
     function applyResponsivePlaceholder() {
@@ -2796,6 +2923,7 @@
             const title = await getPlaylistTitle(playlistId);
             if (isStale()) return;
             currentPlaylistTitle = title;
+            refreshUrlInputDisplay();
 
             // Собираем локально — не трогаем глобальный originalList, пока не уверены, что это актуальная загрузка
             const collected = [];
@@ -2810,7 +2938,8 @@
                 const items = data.items.map(item => {
                     const s = item.snippet;
                     const thumb = s.thumbnails?.medium?.url || s.thumbnails?.default?.url || 'https://via.placeholder.com/120x68?text=No+Thumb';
-                    return { id: s.resourceId.videoId, title: s.title, thumb: thumb };
+                    const author = s.videoOwnerChannelTitle || s.channelTitle || '';
+                    return { id: s.resourceId.videoId, title: s.title, thumb: thumb, author: author };
                 });
                 collected.push(...items);
                 nextPageToken = data.nextPageToken;
@@ -2930,7 +3059,7 @@
         let idx = parseInt(localStorage.getItem(SESSION_INDEX_KEY) || '0', 10);
         if (isNaN(idx) || idx < 0 || idx >= currentQueue.length) idx = 0;
         currentIndex = idx;
-        if (currentPlaylistUrl) document.getElementById('playlist-url').value = currentPlaylistUrl;
+        refreshUrlInputDisplay();
         document.getElementById('video-count').innerText = `${currentQueue.length} videos`;
         try { applyCachedDurations(currentQueue); } catch (e) {}
         renderList();
@@ -3087,7 +3216,8 @@
         const s = it.snippet;
         const thumb = s.thumbnails?.medium?.url || s.thumbnails?.default?.url || 'https://via.placeholder.com/120x68?text=No+Thumb';
         const duration = formatISODuration(it.contentDetails && it.contentDetails.duration) || '';
-        return { id, title: s.title, thumb, duration };
+        const author = s.channelTitle || '';
+        return { id, title: s.title, thumb, duration, author };
     }
 
     function broadcastQueueChange() {
@@ -3429,7 +3559,7 @@
         scheduleIndexSave();
         requestVideoLoad(currentQueue[currentIndex].id);
         updateMediaSession();
-        if (!isShowingPlaylistName) updateCurrentSongDisplay();
+        updateCurrentSongDisplay();
         highlightActive(currentIndex, true);
         // Broadcast: смена трека (коалесцируется при быстром переключении).
         // Не рассылаем, если сами применяем удалённое состояние (эхо).
