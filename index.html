@@ -2869,16 +2869,21 @@
     function refreshUrlInputDisplay() {
         const inp = document.getElementById('playlist-url');
         if (!inp) return;
-        const active = document.activeElement === inp || _urlInputHovering;
-        inp.value = active ? (currentPlaylistUrl || '') : (currentPlaylistTitle || currentPlaylistUrl || '');
+        // Пока поле в фокусе — не трогаем его значение. Иначе наведение/увод
+        // курсора во время редактирования затирало бы то, что уже напечатал пользователь.
+        if (document.activeElement === inp) return;
+        inp.value = _urlInputHovering ? (currentPlaylistUrl || '') : (currentPlaylistTitle || currentPlaylistUrl || '');
     }
     function wireUrlInputDisplay() {
         const inp = document.getElementById('playlist-url');
         if (!inp) return;
         inp.addEventListener('mouseenter', () => { _urlInputHovering = true; refreshUrlInputDisplay(); });
         inp.addEventListener('mouseleave', () => { _urlInputHovering = false; refreshUrlInputDisplay(); });
-        inp.addEventListener('focus', () => { refreshUrlInputDisplay(); inp.select(); });
-        inp.addEventListener('blur', () => { refreshUrlInputDisplay(); });
+        inp.addEventListener('focus', () => { inp.value = currentPlaylistUrl || ''; inp.select(); });
+        // Откладываем подмену отображения на следующий тик: если blur вызван
+        // кликом по кнопке "Load", её onclick должен успеть прочитать ещё не
+        // подменённое значение поля, прежде чем мы вернём вид с названием.
+        inp.addEventListener('blur', () => { setTimeout(refreshUrlInputDisplay, 0); });
     }
 
     function applyResponsivePlaceholder() {
@@ -2906,9 +2911,15 @@
     let playlistLoadToken = 0;
 
     async function loadPlaylist() {
-        const url = document.getElementById('playlist-url').value;
-        const match = url.match(/[&?]list=([^&]+)/);
-        const playlistId = match ? match[1] : null;
+        const url = document.getElementById('playlist-url').value.trim();
+        // Ищем параметр list= независимо от того, есть ли протокол (http/https)
+        // и есть ли www. — регулярка не привязана к началу строки, поэтому
+        // "youtube.com/...", "www.youtube.com/...", "https://youtube.com/..."
+        // и "https://www.youtube.com/..." распознаются одинаково.
+        let match = url.match(/[?&]list=([^&#]+)/);
+        // Если список не найден по параметру, но пользователь вставил "голый" ID плейлиста
+        if (!match) match = url.match(/^([A-Za-z0-9_-]{13,})$/);
+        const playlistId = match ? decodeURIComponent(match[1]) : null;
         if (!playlistId) { alert('Please paste a valid YouTube playlist link'); return; }
 
         const myToken = ++playlistLoadToken;
