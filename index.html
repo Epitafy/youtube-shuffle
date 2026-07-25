@@ -3091,6 +3091,10 @@
     let _activeItemEl = null;
     let _listDelegated = false;
     let _scrollRaf = 0;
+    // Пул уже созданных DOM-узлов строк: index → элемент. Позволяет при скролле
+    // переиспользовать строки (и их <img>), а не пересоздавать их каждый кадр —
+    // именно пересоздание <img> раньше вызывало серое мигание превью.
+    let _rowPool = new Map();
 
     function itemHtml(video, index) {
         return `<div class="video-item${index === currentIndex ? ' active' : ''}" id="v-${index}" data-qindex="${index}" style="top:${index * ROW_H}px">`
@@ -3104,7 +3108,15 @@
             + `</div>`;
     }
 
+    function createRowEl(video, index) {
+        const tpl = document.createElement('template');
+        tpl.innerHTML = itemHtml(video, index);
+        return tpl.content.firstElementChild;
+    }
+
     // Отрисовать только окно видимых строк по текущему scrollTop.
+    // Строки, которые остаются видимыми между вызовами, не трогаем вообще —
+    // создаём/удаляем только те, что реально вошли или вышли из окна.
     function renderWindow() {
         const container = document.getElementById('playlist-items');
         if (!_sizer) return;
@@ -3114,14 +3126,32 @@
         let last = Math.ceil((scrollTop + contH) / ROW_H) + ROW_BUFFER;
         first = Math.max(0, first);
         last = Math.min(currentQueue.length - 1, last);
-        let html = '';
+        const from = _qDrag ? _qDrag.fromIndex : -1;
+
+        const needed = new Set();
         for (let i = first; i <= last; i++) {
-            const from = _qDrag ? _qDrag.fromIndex : -1;
             if (i === from) continue; // перетаскиваемый элемент «плавает» отдельно
-            html += itemHtml(currentQueue[i], i);
+            needed.add(i);
         }
+
+        // Убираем строки, вышедшие из окна — освобождаем только их, не всё подряд.
+        for (const [idx, el] of _rowPool) {
+            if (!needed.has(idx)) {
+                if (el.parentNode) el.parentNode.removeChild(el);
+                _rowPool.delete(idx);
+            }
+        }
+
+        // Создаём только строки, которых ещё нет в пуле — уже отрисованные
+        // (в том числе их <img>) остаются нетронутыми и не перезагружаются.
+        for (const idx of needed) {
+            if (_rowPool.has(idx)) continue;
+            const el = createRowEl(currentQueue[idx], idx);
+            _sizer.appendChild(el);
+            _rowPool.set(idx, el);
+        }
+
         // Во время перетаскивания сдвигаем строки, освобождая место под плейсхолдер.
-        _sizer.innerHTML = html;
         if (_qDrag) applyDragGap();
         _activeItemEl = document.getElementById(`v-${currentIndex}`);
     }
@@ -3182,6 +3212,7 @@
         if (!currentQueue.length) {
             _activeItemEl = null;
             _sizer = null;
+            _rowPool = new Map();
             container.innerHTML = `
                 <div class="state-empty">
                     <div class="state-empty-icon">☰</div>
@@ -3191,6 +3222,9 @@
         }
         container.innerHTML = `<div id="pl-sizer" style="position:relative;height:${currentQueue.length * ROW_H}px"></div>`;
         _sizer = document.getElementById('pl-sizer');
+        // Старый sizer (и все узлы внутри него) только что уничтожен через innerHTML —
+        // пул строк больше не актуален, иначе renderWindow будет ссылаться на «мёртвые» узлы.
+        _rowPool = new Map();
         setupListDelegation(container);
         // Всегда рисуем видимое окно; скроллим к playing-треку только по явному запросу.
         if (centerCurrent) {
@@ -3413,9 +3447,11 @@
         placeholder.style.top = (fromIndex * ROW_H) + 'px';
         _sizer.appendChild(placeholder);
 
-        // Выносим плавающий элемент из #pl-sizer, чтобы renderWindow (innerHTML)
-        // его не уничтожал при перерисовке окна во время drag.
+        // Выносим плавающий элемент из #pl-sizer, чтобы renderWindow его не трогал
+        // при перерисовке окна во время drag — и убираем из пула переиспользуемых
+        // строк, иначе renderWindow сочтёт его «лишним» и удалит из DOM.
         container.appendChild(item);
+        _rowPool.delete(fromIndex);
 
         _qDrag = {
             item, container, placeholder, fromIndex,
