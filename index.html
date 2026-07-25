@@ -3163,6 +3163,10 @@
 
     // Подсветка играющего трека. scroll=true — центрируем его в списке.
     function highlightActive(index, scroll) {
+        // Класс active всегда переключаем явно: раньше это происходило «само собой»,
+        // потому что renderWindow пересоздавал все строки при каждом вызове. Теперь
+        // строки переиспользуются, поэтому снятие/установку класса нужно делать здесь.
+        if (_activeItemEl) _activeItemEl.classList.remove('active');
         if (scroll) {
             const container = document.getElementById('playlist-items');
             const contH = container.clientHeight || 1;
@@ -3171,11 +3175,9 @@
             st = Math.max(0, Math.min(st, maxTop));
             container.scrollTop = st;
             renderWindow();
-        } else {
-            if (_activeItemEl) _activeItemEl.classList.remove('active');
-            _activeItemEl = document.getElementById(`v-${index}`);
-            if (_activeItemEl) _activeItemEl.classList.add('active');
         }
+        _activeItemEl = document.getElementById(`v-${index}`);
+        if (_activeItemEl) _activeItemEl.classList.add('active');
     }
 
     // Делегирование: один набор слушателей на весь список вместо 3 на каждый трек.
